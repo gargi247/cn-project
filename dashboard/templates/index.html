@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Twin Network Dashboard</title>
+    
+    <!-- Plotly.js for charts -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #2d3748;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #718096;
+            font-size: 16px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-card h3 {
+            color: #718096;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-card .value {
+            color: #2d3748;
+            font-size: 36px;
+            font-weight: 700;
+        }
+        
+        .stat-card .label {
+            color: #a0aec0;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.active {
+            background: #48bb78;
+            box-shadow: 0 0 8px rgba(72, 187, 120, 0.6);
+        }
+        
+        .status-indicator.inactive {
+            background: #f56565;
+        }
+        
+        .topology-info {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .topology-info h4 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .topology-info ul {
+            list-style: none;
+            color: #4a5568;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        
+        .refresh-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .refresh-button:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🌐 Digital Twin Network Dashboard</h1>
+            <p>Real-time monitoring of network performance metrics</p>
+            <div style="margin-top: 15px;">
+                <span class="status-indicator active"></span>
+                <span id="status-text">System Active</span>
+                <button class="refresh-button" onclick="refreshAll()" style="float: right;">Refresh Data</button>
+            </div>
+        </div>
+        
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Network Nodes</h3>
+                <div class="value" id="node-count">-</div>
+                <div class="label">Active Nodes</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Network Links</h3>
+                <div class="value" id="link-count">-</div>
+                <div class="label">Monitored Links</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Avg Latency</h3>
+                <div class="value" id="avg-latency">-</div>
+                <div class="label">milliseconds</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Packet Loss</h3>
+                <div class="value" id="avg-loss">-</div>
+                <div class="label">percentage</div>
+            </div>
+        </div>
+        
+        <!-- Overview Chart -->
+        <div class="chart-container">
+            <div id="overview-chart" class="loading">Loading overview...</div>
+        </div>
+        
+        <!-- Packet Loss Chart -->
+        <div class="chart-container">
+            <div id="packet-loss-chart" class="loading">Loading packet loss data...</div>
+        </div>
+        
+        <!-- Topology Information -->
+        <div class="chart-container">
+            <h2 style="margin-bottom: 20px; color: #2d3748;">Network Topology</h2>
+            <div id="topology-info" class="loading">Loading topology...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh interval (30 seconds)
+        const REFRESH_INTERVAL = 30000;
+        
+        // Load all data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTopology();
+            loadStats();
+            loadOverviewChart();
+            loadPacketLossChart();
+            
+            // Set up auto-refresh
+            setInterval(refreshAll, REFRESH_INTERVAL);
+        });
+        
+        function refreshAll() {
+            console.log('Refreshing dashboard data...');
+            loadTopology();
+            loadStats();
+            loadOverviewChart();
+            loadPacketLossChart();
+        }
+        
+        async function loadTopology() {
+            try {
+                const response = await fetch('/api/topology');
+                const data = await response.json();
+                
+                document.getElementById('node-count').textContent = data.nodes.length;
+                document.getElementById('link-count').textContent = data.links.length;
+                
+                // Display topology info
+                const topologyHtml = `
+                    <div class="topology-info">
+                        <h4>Network Nodes (${data.nodes.length})</h4>
+                        <ul>
+                            ${data.nodes.map(node => `
+                                <li><strong>${node.node_name}</strong> (${node.node_type})${node.ip_address ? ' - ' + node.ip_address : ''}</li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    <div class="topology-info" style="margin-top: 15px;">
+                        <h4>Network Links (${data.links.length})</h4>
+                        <ul>
+                            ${data.links.map(link => `
+                                <li>${link.src_node} ↔ ${link.dst_node} (${link.bandwidth_mbps} Mbps, ${link.delay_ms}ms delay)</li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                `;
+                document.getElementById('topology-info').innerHTML = topologyHtml;
+                
+            } catch (error) {
+                console.error('Error loading topology:', error);
+                document.getElementById('topology-info').innerHTML = '<p style="color: #f56565;">Error loading topology</p>';
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats/links');
+                const stats = await response.json();
+                
+                if (stats.length > 0) {
+                    // Calculate averages
+                    const avgLatency = stats.reduce((sum, s) => sum + (s.avg_latency || 0), 0) / stats.length;
+                    const avgLoss = stats.reduce((sum, s) => sum + (s.avg_packet_loss || 0), 0) / stats.length;
+                    
+                    document.getElementById('avg-latency').textContent = avgLatency.toFixed(2);
+                    document.getElementById('avg-loss').textContent = avgLoss.toFixed(2) + '%';
+                }
+                
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        async function loadOverviewChart() {
+            try {
+                const response = await fetch('/api/chart/overview');
+                const chartData = await response.json();
+                
+                Plotly.newPlot('overview-chart', chartData.data, chartData.layout, {
+                    responsive: true,
+                    displayModeBar: false
+                });
+                
+            } catch (error) {
+                console.error('Error loading overview chart:', error);
+                document.getElementById('overview-chart').innerHTML = '<p style="color: #f56565;">Error loading chart</p>';
+            }
+        }
+        
+        async function loadPacketLossChart() {
+            try {
+                const response = await fetch('/api/chart/packet_loss');
+                const chartData = await response.json();
+                
+                Plotly.newPlot('packet-loss-chart', chartData.data, chartData.layout, {
+                    responsive: true,
+                    displayModeBar: false
+                });
+                
+            } catch (error) {
+                console.error('Error loading packet loss chart:', error);
+                document.getElementById('packet-loss-chart').innerHTML = '<p style="color: #f56565;">Error loading chart</p>';
+            }
+        }
+    </script>
+</body>
+</html>
