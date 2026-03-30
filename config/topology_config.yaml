@@ -1,0 +1,144 @@
+# Digital Twin Network - Topology Configuration
+# Define your network structure here
+
+network:
+  name: "dtn_sample_topology"
+  description: "Sample 3-switch, 6-host topology for DTN testing"
+  
+  # Network nodes
+  nodes:
+    # Hosts
+    - name: "h1"
+      type: "host"
+      ip: "10.0.0.1"
+      mac: "00:00:00:00:00:01"
+      
+    - name: "h2"
+      type: "host"
+      ip: "10.0.0.2"
+      mac: "00:00:00:00:00:02"
+      
+    - name: "h3"
+      type: "host"
+      ip: "10.0.0.3"
+      mac: "00:00:00:00:00:03"
+      
+    - name: "h4"
+      type: "host"
+      ip: "10.0.0.4"
+      mac: "00:00:00:00:00:04"
+      
+    - name: "h5"
+      type: "host"
+      ip: "10.0.0.5"
+      mac: "00:00:00:00:00:05"
+      
+    - name: "h6"
+      type: "host"
+      ip: "10.0.0.6"
+      mac: "00:00:00:00:00:06"
+    
+    # Switches
+    - name: "s1"
+      type: "switch"
+      
+    - name: "s2"
+      type: "switch"
+      
+    - name: "s3"
+      type: "switch"
+  
+  # Links between nodes
+  links:
+    # Host to switch connections
+    - src: "h1"
+      dst: "s1"
+      bandwidth: 100  # Mbps
+      delay: "5ms"
+      loss: 0  # packet loss percentage
+      
+    - src: "h2"
+      dst: "s1"
+      bandwidth: 100
+      delay: "5ms"
+      loss: 0
+      
+    - src: "h3"
+      dst: "s2"
+      bandwidth: 100
+      delay: "5ms"
+      loss: 0
+      
+    - src: "h4"
+      dst: "s2"
+      bandwidth: 100
+      delay: "5ms"
+      loss: 0
+      
+    - src: "h5"
+      dst: "s3"
+      bandwidth: 100
+      delay: "5ms"
+      loss: 0
+      
+    - src: "h6"
+      dst: "s3"
+      bandwidth: 100
+      delay: "5ms"
+      loss: 0
+    
+    # Inter-switch connections
+    - src: "s1"
+      dst: "s2"
+      bandwidth: 1000  # Gbps backbone
+      delay: "10ms"
+      loss: 0
+      
+    - src: "s2"
+      dst: "s3"
+      bandwidth: 1000
+      delay: "10ms"
+      loss: 0
+      
+    - src: "s1"
+      dst: "s3"
+      bandwidth: 1000
+      delay: "15ms"
+      loss: 0
+
+# Traffic generation patterns (for testing)
+traffic:
+  # Define traffic flows for automated testing
+  flows:
+    - name: "flow1"
+      src: "h1"
+      dst: "h3"
+      protocol: "tcp"
+      bandwidth: "50M"
+      duration: 60  # seconds
+      
+    - name: "flow2"
+      src: "h2"
+      dst: "h5"
+      protocol: "udp"
+      bandwidth: "30M"
+      duration: 60
+      
+    - name: "flow3"
+      src: "h4"
+      dst: "h6"
+      protocol: "tcp"
+      bandwidth: "40M"
+      duration: 60
+
+# Data collection configuration
+data_collection:
+  interval: 1  # seconds
+  metrics:
+    - latency
+    - throughput
+    - packet_loss
+    - jitter
+  
+  # Monitored links (empty means monitor all)
+  monitored_links: []
