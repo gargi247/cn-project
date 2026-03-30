@@ -1,20 +1,19 @@
 # Core Dependencies
 flask==3.0.0
 plotly==5.18.0
-pandas==2.1.4
+pandas==1.5.3
 dash==2.14.2
 dash-bootstrap-components==1.5.0
 
 # Network Simulation
-mininet==2.3.0
+#mininet==2.3.0
 
 # Data Storage
-sqlite3==0.0.0  # Built-in Python module
+#sqlite3==0.0.0  # Built-in Python module
 
 # Scientific Computing
-numpy==1.26.2
-scipy==1.11.4
-
+numpy==1.24.4
+scipy==1.10.1
 # YAML Configuration
 pyyaml==6.0.1
 
@@ -30,4 +29,4 @@ python-dateutil==2.8.2
 pytz==2023.3
 
 # Network Analysis (optional for Phase 2)
-networkx==3.2.1
+networkx==2.8.8

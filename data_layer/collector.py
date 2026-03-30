@@ -1,6 +1,7 @@
 """
 Network Data Collector for Digital Twin
 Collects latency, throughput, packet loss, and jitter metrics
+by running commands inside Mininet host namespaces via nsenter.
 """
 
 import time
@@ -10,9 +11,10 @@ import logging
 import argparse
 import signal
 import sys
-from typing import Dict, Optional, Tuple
-from datetime import datetime
 import os
+import sqlite3
+from typing import Dict, Optional, List
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data_layer.storage import NetworkDatabase
@@ -24,281 +26,309 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def get_host_pid(host_name: str) -> Optional[int]:
+    """Find PID of a Mininet host process to enter its network namespace."""
+    try:
+        result = subprocess.run(
+            ['grep', '-rl', f'mininet:{host_name}', '/proc/'],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split('/')
+            if len(parts) > 2 and parts[2].isdigit():
+                return int(parts[2])
+    except Exception:
+        pass
+
+    # Fallback: scan /proc manually
+    try:
+        for pid_dir in os.listdir('/proc'):
+            if not pid_dir.isdigit():
+                continue
+            try:
+                with open(f'/proc/{pid_dir}/cmdline', 'rb') as f:
+                    cmdline = f.read().decode('utf-8', errors='ignore')
+                if f'mininet:{host_name}' in cmdline:
+                    return int(pid_dir)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def run_in_namespace(pid: int, cmd: List[str]) -> Optional[str]:
+    """Run a command inside a process's network namespace using nsenter."""
+    try:
+        result = subprocess.run(
+            ['nsenter', '-t', str(pid), '-n', '--'] + cmd,
+            capture_output=True, text=True, timeout=15
+        )
+        return result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception as e:
+        logger.debug(f"nsenter error: {e}")
+        return None
+
+
 class NetworkCollector:
-    """Collect network metrics from Mininet hosts"""
-    
+    """Collect network metrics from Mininet hosts via namespace entry."""
+
     def __init__(self, db: NetworkDatabase, interval: int = 1):
-        """Initialize network collector
-        
-        Args:
-            db: Database instance for storing metrics
-            interval: Collection interval in seconds
-        """
         self.db = db
         self.interval = interval
         self.running = False
         self.metrics_count = 0
-        
-    def parse_ping_output(self, output: str) -> Optional[Dict[str, float]]:
-        """Parse ping command output to extract metrics
-        
-        Args:
-            output: Raw ping command output
-            
-        Returns:
-            Dictionary with latency and packet loss, or None if parsing fails
-        """
+        self._pid_cache: Dict[str, Optional[int]] = {}
+        self._ip_cache:  Dict[str, Optional[str]] = {}
+
+    def _get_node_ip(self, node_name: str) -> Optional[str]:
+        """Get IP for a node — hosts only, switches have no IP."""
+        if node_name not in self._ip_cache:
+            # Look up from DB first
+            try:
+                cursor = self.db.conn.cursor()
+                cursor.execute(
+                    "SELECT ip_address FROM network_topology WHERE node_name=?",
+                    (node_name,)
+                )
+                row = cursor.fetchone()
+                if row and row['ip_address']:
+                    self._ip_cache[node_name] = row['ip_address']
+                    return self._ip_cache[node_name]
+            except Exception:
+                pass
+            # Fallback: derive from name (h1→10.0.0.1)
+            match = re.match(r'h(\d+)$', node_name)
+            self._ip_cache[node_name] = f"10.0.0.{match.group(1)}" if match else None
+        return self._ip_cache[node_name]
+
+    def _get_pid(self, host_name: str) -> Optional[int]:
+        """Get (cached) PID for a Mininet host namespace."""
+        if host_name not in self._pid_cache:
+            pid = get_host_pid(host_name)
+            self._pid_cache[host_name] = pid
+            if pid:
+                logger.debug(f"Namespace PID for {host_name}: {pid}")
+                print(f"  ✓ {host_name} → PID {pid}")
+            else:
+                logger.warning(f"No namespace PID found for {host_name}")
+        return self._pid_cache[host_name]
+
+    def parse_ping_output(self, output: str) -> Optional[Dict]:
+        """Parse ping stdout into a metrics dict."""
         try:
-            # Extract packet loss
-            loss_match = re.search(r'(\d+)% packet loss', output)
-            packet_loss = float(loss_match.group(1)) if loss_match else 0.0
-            
-            # Extract latency statistics (min/avg/max/stddev)
-            latency_match = re.search(
+            loss_match = re.search(r'(\d+(?:\.\d+)?)% packet loss', output)
+            packet_loss = float(loss_match.group(1)) if loss_match else 100.0
+
+            lat_match = re.search(
                 r'rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)',
                 output
             )
-            
-            if latency_match:
-                min_lat = float(latency_match.group(1))
-                avg_lat = float(latency_match.group(2))
-                max_lat = float(latency_match.group(3))
-                jitter = float(latency_match.group(4))  # mdev is jitter
-                
+            if lat_match:
                 return {
-                    'latency_ms': avg_lat,
+                    'latency_ms':     float(lat_match.group(2)),
                     'packet_loss_pct': packet_loss,
-                    'jitter_ms': jitter
+                    'jitter_ms':       float(lat_match.group(4))
                 }
-            else:
-                # No response received
-                return {
-                    'latency_ms': None,
-                    'packet_loss_pct': 100.0,
-                    'jitter_ms': None
-                }
-                
+            return {'latency_ms': None, 'packet_loss_pct': packet_loss, 'jitter_ms': None}
         except Exception as e:
-            logger.error(f"Error parsing ping output: {e}")
+            logger.error(f"Ping parse error: {e}")
             return None
-    
-    def measure_latency(self, src: str, dst: str, count: int = 5) -> Optional[Dict[str, float]]:
-        """Measure latency and packet loss between two hosts
-        
-        Args:
-            src: Source host name
-            dst: Destination host name
-            count: Number of ping packets
-            
-        Returns:
-            Dictionary with metrics or None on failure
-        """
+
+    def measure_latency(self, src: str, dst_ip: str, count: int = 3) -> Optional[Dict]:
+        """Ping dst_ip from inside src's network namespace."""
+        src_pid = self._get_pid(src)
+        if src_pid:
+            output = run_in_namespace(src_pid, ['ping', '-c', str(count), '-W', '2', dst_ip])
+            if output:
+                metrics = self.parse_ping_output(output)
+                if metrics is not None:
+                    return metrics
+
+        # Fallback: ping from host machine (may show 100% loss if routing not set up)
         try:
-            # Use Mininet CLI to execute ping from source to destination
-            # In practice, you'd need to integrate with the running Mininet instance
-            # For now, we'll simulate with direct ping
-            
-            # This is a placeholder - in real implementation, you'd use:
-            # net.get(src).cmd(f'ping -c {count} {net.get(dst).IP()}')
-            
-            cmd = f'ping -c {count} -W 1 {dst}'
             result = subprocess.run(
-                cmd.split(),
-                capture_output=True,
-                text=True,
-                timeout=count + 2
+                ['ping', '-c', str(count), '-W', '2', dst_ip],
+                capture_output=True, text=True, timeout=count * 3
             )
-            
-            if result.returncode != 0 and 'unreachable' not in result.stdout:
-                # Some packets may have been lost, but we got some response
-                pass
-            
-            metrics = self.parse_ping_output(result.stdout)
-            return metrics
-            
-        except subprocess.TimeoutExpired:
-            logger.warning(f"Ping timeout: {src} -> {dst}")
-            return {
-                'latency_ms': None,
-                'packet_loss_pct': 100.0,
-                'jitter_ms': None
-            }
+            return self.parse_ping_output(result.stdout)
         except Exception as e:
-            logger.error(f"Error measuring latency {src}->{dst}: {e}")
-            return None
-    
-    def measure_throughput(self, src: str, dst: str) -> Optional[float]:
-        """Measure throughput between two hosts using iperf
-        
-        Args:
-            src: Source host name
-            dst: Destination host name
-            
-        Returns:
-            Throughput in Mbps or None on failure
+            logger.debug(f"Fallback ping failed: {e}")
+
+        return {'latency_ms': None, 'packet_loss_pct': 100.0, 'jitter_ms': None}
+
+    def _store_metric(self, src: str, dst: str, metrics: Dict):
+        """Insert metric into DB with retry on lock."""
+        for attempt in range(5):
+            try:
+                self.db.insert_metric(
+                    node_src=src,
+                    node_dst=dst,
+                    latency_ms=metrics.get('latency_ms'),
+                    throughput_mbps=None,
+                    packet_loss_pct=metrics.get('packet_loss_pct'),
+                    jitter_ms=metrics.get('jitter_ms')
+                )
+                self.metrics_count += 1
+
+                lat  = metrics.get('latency_ms')
+                loss = metrics.get('packet_loss_pct')
+                jit  = metrics.get('jitter_ms')
+                logger.debug(
+                    f"{src}->{dst} | "
+                    f"Lat: {f'{lat:.2f}ms' if lat is not None else 'N/A'} | "
+                    f"Loss: {f'{loss:.1f}%' if loss is not None else 'N/A'} | "
+                    f"Jitter: {f'{jit:.2f}ms' if jit is not None else 'N/A'}"
+                )
+                return
+
+            except sqlite3.OperationalError as e:
+                if 'locked' in str(e) and attempt < 4:
+                    wait = 0.5 * (attempt + 1)
+                    logger.warning(f"DB locked, retry {attempt+1}/5 in {wait}s")
+                    time.sleep(wait)
+                else:
+                    logger.error(f"DB error after retries: {e}")
+                    return
+            except Exception as e:
+                logger.error(f"Error storing metric: {e}")
+                return
+
+    def collect_host_pairs(self):
         """
-        try:
-            # This is a placeholder - in real implementation with Mininet:
-            # dst_host.cmd('iperf -s &')
-            # result = src_host.cmd(f'iperf -c {dst_host.IP()} -t 1')
-            
-            # For demonstration, return simulated value
-            # In production, parse iperf output
-            return None  # Not implemented in standalone mode
-            
-        except Exception as e:
-            logger.error(f"Error measuring throughput {src}->{dst}: {e}")
-            return None
-    
-    def collect_link_metrics(self, src: str, dst: str):
-        """Collect all metrics for a link and store in database
-        
-        Args:
-            src: Source node name
-            dst: Destination node name
+        Collect metrics between all host pairs.
+        Switches don't have IPs so we measure host-to-host paths,
+        which traverse the switches naturally and give meaningful data.
         """
-        # Measure latency and packet loss
-        metrics = self.measure_latency(src, dst, count=3)
-        
-        if metrics is None:
-            logger.warning(f"Failed to collect metrics for {src}->{dst}")
-            return
-        
-        # Measure throughput (optional, can be expensive)
-        throughput = self.measure_throughput(src, dst)
-        
-        # Store in database
+        # Get all hosts from topology
         try:
-            self.db.insert_metric(
-                node_src=src,
-                node_dst=dst,
-                latency_ms=metrics.get('latency_ms'),
-                throughput_mbps=throughput,
-                packet_loss_pct=metrics.get('packet_loss_pct'),
-                jitter_ms=metrics.get('jitter_ms')
+            cursor = self.db.conn.cursor()
+            cursor.execute(
+                "SELECT node_name, ip_address FROM network_topology "
+                "WHERE node_type='host' AND status='active'"
             )
-            self.metrics_count += 1
-            
-            logger.debug(
-                f"Collected: {src}->{dst} | "
-                f"Latency: {metrics.get('latency_ms'):.2f}ms | "
-                f"Loss: {metrics.get('packet_loss_pct'):.1f}% | "
-                f"Jitter: {metrics.get('jitter_ms'):.2f}ms"
-            )
-            
+            hosts = [dict(r) for r in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"Error storing metrics: {e}")
-    
-    def collect_topology_metrics(self):
-        """Collect metrics for all links in the topology"""
-        # Get all links from database
-        links = self.db.get_topology_links()
-        
-        if not links:
-            logger.warning("No links found in topology")
+            logger.error(f"Could not fetch hosts: {e}")
             return
-        
-        logger.info(f"Collecting metrics for {len(links)} links...")
-        
-        for link in links:
-            src = link['src_node']
-            dst = link['dst_node']
-            self.collect_link_metrics(src, dst)
-    
+
+        if len(hosts) < 2:
+            logger.warning("Need at least 2 hosts to measure")
+            return
+
+        logger.info(f"Measuring {len(hosts)} hosts → {len(hosts)-1} pairs each")
+
+        for i, src_host in enumerate(hosts):
+            src = src_host['node_name']
+            src_ip = self._get_node_ip(src)
+            if not src_ip:
+                continue
+
+            for dst_host in hosts:
+                dst = dst_host['node_name']
+                if src == dst:
+                    continue
+                dst_ip = self._get_node_ip(dst)
+                if not dst_ip:
+                    continue
+
+                metrics = self.measure_latency(src, dst_ip, count=3)
+                if metrics:
+                    self._store_metric(src, dst, metrics)
+
     def run_collection_loop(self):
-        """Main collection loop"""
+        """Main collection loop."""
         self.running = True
-        logger.info(f"Starting collection loop (interval: {self.interval}s)")
-        
+        logger.info(f"Starting collection (interval: {self.interval}s)")
+        last_cache_clear = time.time()
+
         try:
             while self.running:
                 start_time = time.time()
-                
-                # Collect metrics for all links
-                self.collect_topology_metrics()
-                
-                # Calculate sleep time to maintain interval
+
+                # Reconnect only if connection was lost
+                try:
+                    self.db.conn.execute("SELECT 1")
+                except Exception:
+                    logger.info("Reconnecting to database...")
+                    self.db.connect()
+
+                # Refresh PID cache every 60s in case Mininet restarted
+                if time.time() - last_cache_clear > 60:
+                    self._pid_cache.clear()
+                    self._ip_cache.clear()
+                    last_cache_clear = time.time()
+
+                self.collect_host_pairs()
+
                 elapsed = time.time() - start_time
                 sleep_time = max(0, self.interval - elapsed)
-                
-                if self.metrics_count % 10 == 0:
-                    logger.info(f"Collected {self.metrics_count} metric samples")
-                
+
+                if self.metrics_count > 0 and self.metrics_count % 30 == 0:
+                    logger.info(f"Total samples collected: {self.metrics_count}")
+
                 time.sleep(sleep_time)
-                
+
         except KeyboardInterrupt:
-            logger.info("\nCollection interrupted by user")
+            logger.info("\nStopped by user")
         finally:
             self.stop()
-    
+
     def stop(self):
-        """Stop collection loop"""
         self.running = False
-        logger.info(f"Collection stopped. Total samples: {self.metrics_count}")
+        logger.info(f"Collector stopped. Total samples: {self.metrics_count}")
 
 
 def signal_handler(signum, frame):
-    """Handle interrupt signal"""
-    logger.info("\nReceived interrupt signal, stopping...")
+    logger.info("\nInterrupt received, stopping...")
     sys.exit(0)
 
 
 def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(
-        description="Collect network metrics for Digital Twin"
-    )
-    parser.add_argument(
-        '--db',
-        default='dtn_network.db',
-        help='Database file path'
-    )
-    parser.add_argument(
-        '--interval',
-        type=int,
-        default=1,
-        help='Collection interval in seconds'
-    )
-    parser.add_argument(
-        '--duration',
-        type=int,
-        help='Collection duration in seconds (runs indefinitely if not specified)'
-    )
-    
+    parser = argparse.ArgumentParser(description="DTN Network Metrics Collector")
+    parser.add_argument('--db',       default='dtn_network.db')
+    parser.add_argument('--interval', type=int, default=1)
+    parser.add_argument('--duration', type=int)
     args = parser.parse_args()
-    
-    # Setup signal handler
+
     signal.signal(signal.SIGINT, signal_handler)
-    
-    # Initialize database
+
     logger.info("Connecting to database...")
     db = NetworkDatabase(args.db)
-    
-    # Check if topology exists
-    links = db.get_topology_links()
-    if not links:
-        logger.warning("No network topology found in database!")
-        logger.info("Please run topology_builder.py first to create the network")
+
+    hosts = []
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT node_name FROM network_topology WHERE node_type='host'")
+        hosts = cursor.fetchall()
+    except Exception:
+        pass
+
+    if not hosts:
+        logger.error("No hosts found in topology DB. Run topology_builder.py first.")
         return 1
-    
-    logger.info(f"Found {len(links)} links in topology")
-    
-    # Create collector
+
+    logger.info(f"Found {len(hosts)} hosts to monitor")
+
+    result = subprocess.run(['which', 'nsenter'], capture_output=True)
+    if result.returncode != 0:
+        logger.warning("nsenter not found — sudo apt-get install util-linux")
+    else:
+        logger.info("nsenter available — collecting from Mininet namespaces")
+
     collector = NetworkCollector(db, interval=args.interval)
-    
-    # Run collection
+
     if args.duration:
-        logger.info(f"Collecting for {args.duration} seconds...")
-        start_time = time.time()
-        while time.time() - start_time < args.duration:
-            collector.collect_topology_metrics()
+        start = time.time()
+        while time.time() - start < args.duration:
+            collector.collect_host_pairs()
             time.sleep(args.interval)
         collector.stop()
     else:
-        logger.info("Collecting indefinitely (Ctrl+C to stop)...")
         collector.run_collection_loop()
-    
-    # Cleanup
+
     db.close()
     return 0
 
