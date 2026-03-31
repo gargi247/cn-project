@@ -4,6 +4,7 @@ Real-time visualization of network metrics
 """
 
 from flask import Flask, render_template, jsonify
+import threading
 import plotly.graph_objs as go
 import plotly.utils
 import json
@@ -13,9 +14,14 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data_layer.storage import NetworkDatabase
+from twin_core.control_loop import ClosedLoopController
 
 app = Flask(__name__)
 db = NetworkDatabase('dtn_network.db')
+controller = ClosedLoopController(db, loop_interval=5.0,
+                                   latency_threshold=1500.0,
+                                   loss_threshold=10.0)
+controller.start()
 
 
 @app.route('/')
@@ -247,6 +253,56 @@ def health_check():
             'error': str(e)
         }), 500
 
+
+
+
+@app.route('/api/phase2/status')
+def get_phase2_status():
+    try:
+        return jsonify(controller.get_status())
+    except Exception as e:
+        return jsonify({'error': str(e), 'running': False})
+
+@app.route('/api/phase2/congestion')
+def get_phase2_congestion():
+    try:
+        events = controller.detector.scan_all_links()
+        return jsonify({'events': events, 'count': len(events),
+                        'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({'error': str(e), 'events': []})
+
+@app.route('/api/phase2/routes')
+def get_phase2_routes():
+    try:
+        return jsonify({'active_reroutes': controller.optimizer.get_active_reroutes()})
+    except Exception as e:
+        return jsonify({'error': str(e), 'active_reroutes': {}})
+
+@app.route('/api/phase2/inject/<host>')
+def inject_congestion(host):
+    try:
+        success = controller.inject_demo_congestion(host, delay_ms=500, loss_pct=20.0)
+        return jsonify({'success': success, 'host': host})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False})
+
+@app.route('/api/phase2/clear/<host>')
+def clear_congestion(host):
+    try:
+        success = controller.clear_demo_congestion(host)
+        return jsonify({'success': success, 'host': host})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False})
+
+@app.route('/api/phase2/events')
+def get_phase2_events():
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT * FROM network_events ORDER BY timestamp DESC LIMIT 50")
+        return jsonify([dict(r) for r in cursor.fetchall()])
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     print("=" * 60)
