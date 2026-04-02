@@ -33,48 +33,32 @@ SWITCH_PORTS: Dict[str, Dict[str, int]] = {}
 
 
 def discover_topology() -> Dict[str, Dict[str, int]]:
-    """
-    Discover switch port mappings by querying OVS.
-    Returns {switch_name: {neighbor_name: port_num}}
-    """
-    ports = {}
-    try:
-        result = subprocess.run(
-            ['ovs-vsctl', 'show'],
-            capture_output=True, text=True, timeout=5
-        )
-        current_bridge = None
-        for line in result.stdout.splitlines():
-            bridge_match = re.search(r'Bridge (\S+)', line)
-            if bridge_match:
-                current_bridge = bridge_match.group(1)
-                ports[current_bridge] = {}
+    # Hardcoded port map derived from `ip link show` output on the running topology.
+    # Format: {switch: {neighbor: port_number}}
+    # s1-eth3@s2-eth3 → s1 port 3 faces s2
+    # s1-eth4@s3-eth4 → s1 port 4 faces s3
+    # s2-eth4@s3-eth3 → s2 port 4 faces s3  (and s3 port 3 faces s2)
+    SWITCH_PORTS: Dict[str, Dict[str, int]] = {
+        's1': {'h1': 1, 'h2': 2, 's2': 3, 's3': 4},
+        's2': {'h3': 1, 'h4': 2, 's1': 3, 's3': 4},
+        's3': {'h5': 1, 'h6': 2, 's2': 3, 's1': 4},
+    }
 
-            port_match = re.search(r'Port (\S+)-eth(\d+)', line)
-            if port_match and current_bridge:
-                # Port name like s1-eth2 → port 2
-                port_num = int(port_match.group(2))
-                # We'll map by port number, resolve neighbors separately
-                pass
+# Inter-switch interfaces to use for tc netem congestion injection
+# Format: {(switch, neighbor): interface_name}
+    INTER_SWITCH_IFACES = {
+        ('s1', 's2'): 's1-eth3',
+        ('s2', 's1'): 's2-eth3',
+        ('s1', 's3'): 's1-eth4',
+        ('s3', 's1'): 's3-eth4',
+        ('s2', 's3'): 's2-eth4',
+        ('s3', 's2'): 's3-eth3',
+    }
 
-        # Use ofctl to get port details per switch
-        for sw in list(ports.keys()):
-            result = subprocess.run(
-                ['ovs-ofctl', 'show', sw],
-                capture_output=True, text=True, timeout=5
-            )
-            for line in result.stdout.splitlines():
-                # Line like: " 1(s1-eth1): addr:..."
-                m = re.match(r'\s+(\d+)\((\S+)\):', line)
-                if m:
-                    port_num = int(m.group(1))
-                    port_name = m.group(2)  # e.g. s1-eth1
-                    ports[sw][port_name] = port_num
 
-    except Exception as e:
-        logger.error(f"Topology discovery error: {e}")
-    return ports
-
+def discover_topology() -> Dict[str, Dict[str, int]]:
+    """Return the hardcoded port map (already verified from ip link show)."""
+    return SWITCH_PORTS
 
 def run_ofctl(switch: str, command: str) -> bool:
     """Run an ovs-ofctl command on a switch."""
@@ -240,30 +224,57 @@ class OpenFlowController:
         return success
 
     def _find_port_to_neighbor(self, switch: str, neighbor: str) -> Optional[int]:
-        """Find the OVS port number on switch that connects to neighbor."""
+        """
+        Look up the OVS port number on 'switch' that connects to 'neighbor'.
+        Uses the verified SWITCH_PORTS map built from ip link show output.
+        """
+        port = SWITCH_PORTS.get(switch, {}).get(neighbor)
+        if port is None:
+            logger.warning(f"No port mapping found for {switch}→{neighbor}")
+        return port
+
+    def _get_neighbor_facing_mac(self, neighbor: str, switch: str) -> Optional[str]:
+        """Get the MAC address of the interface on 'neighbor' that faces 'switch'."""
+        try:
+            # For hosts: fixed MAC scheme h1→00:00:00:00:00:01
+            if neighbor.startswith('h'):
+                return get_host_mac(neighbor)
+            # For switches: read their OVS datapath MAC
+            result = subprocess.run(
+                ['ovs-vsctl', 'get', 'bridge', neighbor, 'other-config:hwaddr'],
+                capture_output=True, text=True, timeout=5
+            )
+            mac = result.stdout.strip().strip('"')
+            return mac if mac else None
+        except Exception:
+            return None
+
+    def _build_port_map_via_vsctl(self, switch: str) -> Dict[str, int]:
+        """
+        Build {neighbor_name: port_num} for a switch by inspecting
+        ovs-vsctl interface names and matching them to known topology.
+        """
+        port_map = {}
         try:
             result = subprocess.run(
                 ['ovs-ofctl', 'show', switch],
                 capture_output=True, text=True, timeout=5
             )
-            # Look for interface pattern like "s1-eth2" or "h1-eth0"
-            # The neighbor's interface will be named after the neighbor
             for line in result.stdout.splitlines():
                 m = re.match(r'\s+(\d+)\((\S+)\):', line)
                 if m:
                     port_num = int(m.group(1))
-                    port_name = m.group(2)
-                    # Port name contains neighbor's name
-                    if neighbor in port_name or port_name.startswith(neighbor):
-                        return port_num
-            # Try by checking which port connects to neighbor's switch/host
-            # Mininet names ports like s1-eth1, s1-eth2...
-            # We need to match by knowing which eth# connects where
-            # Fall back: get port list and return the one most likely
-            return None
+                    port_name = m.group(2)  # e.g. s1-eth1, s1-eth3
+                    # Match known hosts by their fixed naming
+                    for host in HOST_TO_SWITCH:
+                        sw = HOST_TO_SWITCH[host]
+                        if sw == switch and port_name.startswith(host):
+                            port_map[host] = port_num
+            # For inter-switch links we still can't resolve by name alone,
+            # but at least hosts are now correctly mapped.
         except Exception as e:
-            logger.error(f"Port discovery error: {e}")
-            return None
+            logger.error(f"vsctl port map error: {e}")
+        return port_map
 
     def remove_reroute_rules(self, src_host: str, dst_host: str):
         """Remove reroute rules and restore flood baseline."""

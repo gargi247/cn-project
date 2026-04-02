@@ -4,14 +4,15 @@ Rule-based sliding window analysis on collected metrics.
 Detects high latency and packet loss on any link.
 """
 
+from data_layer.storage import NetworkDatabase
 import sqlite3
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime
-import sys, os
+import sys
+import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data_layer.storage import NetworkDatabase
 
 logging.basicConfig(level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -64,18 +65,20 @@ class CongestionDetector:
         None if healthy.
         """
         samples = self.get_recent_window(src, dst)
-        if len(samples) < 3:
+        if len(samples) < 2:
             return None  # not enough data
 
         avg_latency = sum(s['latency_ms'] for s in samples) / len(samples)
-        avg_loss    = sum(s['packet_loss_pct'] or 0 for s in samples) / len(samples)
+        avg_loss = sum(s['packet_loss_pct']
+                       or 0 for s in samples) / len(samples)
 
         congested = False
         reasons = []
 
         if avg_latency > self.latency_threshold:
             congested = True
-            reasons.append(f"latency {avg_latency:.1f}ms > {self.latency_threshold}ms")
+            reasons.append(
+                f"latency {avg_latency:.1f}ms > {self.latency_threshold}ms")
 
         if avg_loss > self.loss_threshold:
             congested = True
@@ -134,80 +137,109 @@ class CongestionDetector:
 
         return events
 
-    def inject_congestion(self, src_host: str, dst_host: str,
-                          delay_ms: int = 100, loss_pct: float = 20.0):
+    def inject_congestion(self, switch: str, iface: str,
+                          delay_ms: int = 200, loss_pct: float = 20.0):
         """
-        Inject artificial congestion on a link using tc netem.
-        Runs inside the src host's Mininet namespace.
-        Used for demo/testing purposes.
-        
-        Args:
-            src_host: Host name (e.g. 'h1')
-            dst_host: Target host name (e.g. 'h3')
-            delay_ms: Extra delay to add in milliseconds
-            loss_pct: Packet loss percentage to inject
+        Inject congestion on an inter-switch interface using tc netem.
+        Switch interfaces are in the ROOT namespace — no nsenter needed.
         """
-        import subprocess, re
+        import subprocess
 
-        # Find the host's PID
-        pid = None
-        try:
-            for pid_dir in os.listdir('/proc'):
-                if not pid_dir.isdigit():
-                    continue
-                try:
-                    with open(f'/proc/{pid_dir}/cmdline', 'rb') as fh:
-                        cmdline = fh.read().decode('utf-8', errors='ignore')
-                    if f'mininet:{src_host}' in cmdline:
-                        pid = pid_dir
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        if not pid:
-            logger.error(f"Cannot find PID for {src_host}")
-            return False
-
-        # Find the interface facing the switch (eth0 in Mininet hosts)
-        iface = f"{src_host}-eth0"
-
-        # Apply tc netem rules inside the namespace
         cmds = [
-            f"nsenter -t {pid} -n -- tc qdisc del dev {iface} root 2>/dev/null || true",
-            f"nsenter -t {pid} -n -- tc qdisc add dev {iface} root netem delay {delay_ms}ms loss {loss_pct}%"
+            f"tc qdisc del dev {iface} root 2>/dev/null || true",
+            f"tc qdisc add dev {iface} root netem delay {delay_ms}ms loss {loss_pct}%"
         ]
-
         for cmd in cmds:
             try:
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
                 if result.returncode != 0 and 'del' not in cmd:
-                    logger.error(f"tc command failed: {result.stderr}")
+                    logger.error(f"tc failed on {iface}: {result.stderr}")
                     return False
             except Exception as e:
                 logger.error(f"Error applying tc: {e}")
                 return False
 
-        logger.warning(
-            f"INJECTED congestion on {src_host}: "
-            f"+{delay_ms}ms delay, {loss_pct}% loss on {iface}"
-        )
-
-        # Log to DB
+        logger.warning(f"INJECTED congestion on {iface}: +{delay_ms}ms, {loss_pct}% loss")
         self.db.insert_event(
-            event_type='congestion',
-            severity='warning',
-            node_name=src_host,
-            description=f"Manual congestion injection: +{delay_ms}ms delay, {loss_pct}% loss"
+            event_type='congestion', severity='warning', node_name=switch,
+            description=f"Congestion injected on {iface}: +{delay_ms}ms, {loss_pct}% loss"
+        )
+        return True
+    """
+    def inject_congestion(self, switch: str, iface: str,
+                          delay_ms: int = 200, loss_pct: float = 20.0):
+        
+        Inject congestion on an inter-switch interface using tc netem.
+        Targets switch ports (e.g. s1-eth3), NOT host interfaces.
+        
+        import subprocess
+
+        pid = self._find_node_pid(switch)
+        if not pid:
+            logger.error(f"Cannot find PID for switch {switch}")
+            return False
+
+        cmds = [
+            f"nsenter -t {pid} -n -- tc qdisc del dev {iface} root 2>/dev/null || true",
+            f"nsenter -t {pid} -n -- tc qdisc add dev {iface} root netem delay {delay_ms}ms loss {loss_pct}%"
+        ]
+        for cmd in cmds:
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if result.returncode != 0 and 'del' not in cmd:
+                    logger.error(f"tc failed: {result.stderr}")
+                    return False
+            except Exception as e:
+                logger.error(f"Error applying tc: {e}")
+                return False
+
+        logger.warning(f"INJECTED congestion on {switch}/{iface}: +{delay_ms}ms, {loss_pct}% loss")
+        self.db.insert_event(
+            event_type='congestion', severity='warning', node_name=switch,
+            description=f"Congestion injected on {iface}: +{delay_ms}ms, {loss_pct}% loss"
+        )
+        return True
+    """
+    
+    def clear_congestion(self, switch: str, iface: str):
+        """Remove injected tc netem rules from a switch interface."""
+        import subprocess
+
+        cmd = f"tc qdisc del dev {iface} root 2>/dev/null || true"
+        subprocess.run(cmd, shell=True)
+        logger.info(f"Cleared congestion from {iface}")
+        self.db.insert_event(
+            event_type='recovery', severity='info', node_name=switch,
+            description=f"Congestion cleared on {iface}"
         )
         return True
 
-    def clear_congestion(self, src_host: str):
-        """Remove injected tc netem rules from a host."""
+    """
+    def clear_congestion(self, switch: str, iface: str):
+        Remove injected tc netem rules from a switch interface.
         import subprocess
 
-        pid = None
+        pid = self._find_node_pid(switch)
+        if not pid:
+            logger.error(f"Cannot find PID for switch {switch}")
+            return False
+
+        cmd = f"nsenter -t {pid} -n -- tc qdisc del dev {iface} root 2>/dev/null || true"
+        subprocess.run(cmd, shell=True)
+        logger.info(f"Cleared congestion from {switch}/{iface}")
+        self.db.insert_event(
+            event_type='recovery', severity='info', node_name=switch,
+            description=f"Congestion cleared on {iface}"
+        )
+        return True
+    """
+
+    def _find_node_pid(self, node_name: str) -> str:
+        """
+        Find the PID that owns the network namespace for a Mininet node.
+        Uses namespace inode deduplication to get the true owner, not child PIDs.
+        """
+        candidates = []
         try:
             for pid_dir in os.listdir('/proc'):
                 if not pid_dir.isdigit():
@@ -215,27 +247,24 @@ class CongestionDetector:
                 try:
                     with open(f'/proc/{pid_dir}/cmdline', 'rb') as fh:
                         cmdline = fh.read().decode('utf-8', errors='ignore')
-                    if f'mininet:{src_host}' in cmdline:
-                        pid = pid_dir
-                        break
+                    if f'mininet:{node_name}' in cmdline:
+                        candidates.append(pid_dir)
                 except Exception:
                     continue
         except Exception:
             pass
 
-        if not pid:
-            logger.error(f"Cannot find PID for {src_host}")
-            return False
+        if not candidates:
+            return None
 
-        iface = f"{src_host}-eth0"
-        cmd = f"nsenter -t {pid} -n -- tc qdisc del dev {iface} root 2>/dev/null || true"
+        # Return the PID that actually owns its network namespace (unique inode)
+        seen_inodes = {}
+        for pid in candidates:
+            try:
+                ns_link = os.readlink(f'/proc/{pid}/ns/net')
+                if ns_link not in seen_inodes:
+                    seen_inodes[ns_link] = pid
+            except Exception:
+                continue
 
-        subprocess.run(cmd, shell=True)
-        logger.info(f"Cleared congestion rules from {src_host}")
-        self.db.insert_event(
-            event_type='recovery',
-            severity='info',
-            node_name=src_host,
-            description="Congestion rules cleared"
-        )
-        return True
+        return list(seen_inodes.values())[0] if seen_inodes else candidates[0]

@@ -202,17 +202,8 @@ class SyncEngine:
         recent_metrics = self.db.get_recent_metrics(limit=100)
         self.twin_state.update_metrics(recent_metrics)
         
-        # Detect anomalies
+        # Detect anomalies (in-memory only — control loop handles DB writes)
         anomalies = self.twin_state.detect_anomalies()
-        
-        # Log anomalies to database
-        for anomaly in anomalies:
-            self.db.insert_event(
-                event_type='anomaly',
-                severity='warning',
-                node_name=anomaly['link'].split('-')[0],
-                description=f"{anomaly['type']}: {anomaly['value']:.2f} (threshold: {anomaly['threshold']})"
-            )
     
     def get_state(self) -> TwinState:
         """Get current twin state

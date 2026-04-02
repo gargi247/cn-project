@@ -161,7 +161,7 @@
     <!-- ── Phase 2 Panel ── -->
     <div class="card">
         <div class="p2-header">
-            <h2>🔄 Phase 2: Closed-Loop Control</h2>
+            <h2>Phase 2: Closed-Loop Control</h2>
             <span class="badge healthy" id="health-badge">All Healthy</span>
         </div>
 
@@ -187,17 +187,17 @@
 
         <!-- Demo Controls -->
         <div class="demo-box">
-            <strong>🎮 Demo: Inject / Clear Congestion</strong>
+            <strong> Demo: Inject / Clear Congestion</strong>
             <div class="demo-controls">
-                <span>Inject (+500ms, 20% loss) on:</span>
-                <button class="btn-inject" onclick="inject('h1')">h1</button>
-                <button class="btn-inject" onclick="inject('h3')">h3</button>
-                <button class="btn-inject" onclick="inject('h5')">h5</button>
+                <span>Inject (+200ms, 20% loss) on link:</span>
+                <button class="btn-inject" onclick="inject('s1-s2')">s1 ↔ s2</button>
+                <button class="btn-inject" onclick="inject('s2-s3')">s2 ↔ s3</button>
+                <button class="btn-inject" onclick="inject('s1-s3')">s1 ↔ s3</button>
                 <span style="margin-left:12px;">Clear:</span>
-                <button class="btn-clear" onclick="clear('h1')">h1</button>
-                <button class="btn-clear" onclick="clear('h3')">h3</button>
-                <button class="btn-clear" onclick="clear('h5')">h5</button>
-                <button onclick="resetNetwork()" style="margin-left:16px;background:#6b46c1;color:white;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">🔄 Reset All</button>
+                <button class="btn-clear" onclick="clear('s1-s2')">s1 ↔ s2</button>
+                <button class="btn-clear" onclick="clear('s2-s3')">s2 ↔ s3</button>
+                <button class="btn-clear" onclick="clear('s1-s3')">s1 ↔ s3</button>
+                <button onclick="resetNetwork()" style="margin-left:16px;background:#6b46c1;color:white;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">Reset All</button>
             </div>
             <div id="demo-msg"></div>
         </div>
@@ -423,12 +423,12 @@ async function loadEvents() {
     } catch(e) { console.error('events', e); }
 }
 
-async function inject(host) {
+async function inject(linkId) {
     const msg = document.getElementById('demo-msg');
     msg.style.color = '#744210';
-    msg.textContent = `Injecting congestion on ${host}...`;
+    msg.textContent = `Injecting congestion on link ${linkId}...`;
     try {
-        const r = await fetch(`/api/phase2/inject/${host}`);
+        const r = await fetch(`/api/phase2/inject/${linkId}`);
         const d = await r.json();
         if (d.success) {
             msg.style.color = '#c53030';
@@ -461,12 +461,12 @@ async function resetNetwork() {
     } catch(e) { msg.textContent = 'Error: ' + e.message; }
 }
 
-async function clear(host) {
+async function clear(linkId) {
     const msg = document.getElementById('demo-msg');
     msg.style.color = '#276749';
-    msg.textContent = `Clearing congestion on ${host}...`;
+    msg.textContent = `Clearing congestion on link ${linkId}...`;
     try {
-        const r = await fetch(`/api/phase2/clear/${host}`);
+        const r = await fetch(`/api/phase2/clear/${linkId}`);
         const d = await r.json();
         if (d.success) {
             msg.textContent = `✓ ${d.message} Recovery in ~10s...`;

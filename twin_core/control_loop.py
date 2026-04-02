@@ -194,17 +194,20 @@ class ClosedLoopController:
             'timestamp': datetime.now().isoformat()
         }
 
-    def inject_demo_congestion(self, host: str = 'h1',
-                                delay_ms: int = 150,
-                                loss_pct: float = 30.0):
-        """Inject congestion for demo purposes."""
-        logger.info(f"Demo: Injecting congestion on {host}...")
-        success = self.detector.inject_congestion(host, None, delay_ms, loss_pct)
-        return success
+    def inject_demo_congestion(self, switch: str = 's1', iface: str = 's1-eth3',
+                                delay_ms: int = 500, loss_pct: float = 30.0):
+        """
+        Inject congestion on an inter-switch link for demo purposes.
+        Default targets s1↔s2 link (s1-eth3). Other options:
+          s1/s1-eth4 → s1↔s3 link
+          s2/s2-eth4 → s2↔s3 link
+        """
+        logger.info(f"Demo: Injecting congestion on {switch}/{iface}...")
+        return self.detector.inject_congestion(switch, iface, delay_ms, loss_pct)
 
-    def clear_demo_congestion(self, host: str = 'h1'):
-        """Clear injected congestion."""
-        return self.detector.clear_congestion(host)
+    def clear_demo_congestion(self, switch: str = 's1', iface: str = 's1-eth3'):
+        """Clear injected congestion from a switch interface."""
+        return self.detector.clear_congestion(switch, iface)
 
 
 def signal_handler(signum, frame):
@@ -244,17 +247,81 @@ def main():
         latency_threshold=args.latency,
         loss_threshold=args.loss
     )
+    
 
+    controller.start()
+
+    if args.demo:
+    	logger.info("\n[DEMO MODE] Will inject congestion in 10 seconds...")
+    	time.sleep(10)
+    
+    # Injects congestion as part of Phase 2 closed-loop testing
+    	controller.inject_demo_congestion(switch='s1', iface='s1-eth3', delay_ms=200, loss_pct=30.0)
+    
+    	logger.info("[DEMO] Congestion injected. Waiting 30s for detection + reroute...")
+    	time.sleep(30)
+    
+    	logger.info("[DEMO] Clearing congestion to show recovery...")
+    	controller.clear_demo_congestion(switch='s1', iface='s1-eth3')
+    
+    	time.sleep(15)
+    	logger.info("[DEMO] Demo complete.")
+    else:
+    	logger.info("Running (Ctrl+C to stop)...")
+    	try:
+    	    while True:
+    	        time.sleep(1)
+    	except KeyboardInterrupt:
+    	    pass
+
+# Cleanup sequence for the Digital Twin Network
+    controller.stop()
+    db.close()
+    print("\nFinal Status:")
+    import json
+    print(json.dumps(controller.stats, indent=2))
+
+
+if __name__ == '__main__':
+    main()
+    
+    
+"""
     controller.start()
 
     if args.demo:
         logger.info("\n[DEMO MODE] Will inject congestion in 10 seconds...")
         time.sleep(10)
-        controller.inject_demo_congestion(args.inject_host, delay_ms=150, loss_pct=30.0)
+        controller.inject_demo_congestion(switch='s1', iface='s1-eth3', delay_ms=200, loss_pct=30.0)
         logger.info("[DEMO] Congestion injected. Waiting 30s for detection + reroute...")
         time.sleep(30)
         logger.info("[DEMO] Clearing congestion to show recovery...")
-        controller.clear_demo_congestion(args.inject_host)
+        controller.clear_demo_congestion(switch='s1', iface='s1-eth3')
+```
+
+---
+
+## File 4: `topology_builder.py`
+
+No changes needed here — the topology builder correctly sets up the physical network. The congestion injection was the only broken part, and that's now fixed in `congestion_detector.py`.
+
+---
+
+## How to find the correct interface names before demoing
+
+After Mininet starts, run this inside the `mininet>` CLI to see which eth port on each switch faces which neighbor:
+```
+mininet> sh ovs-ofctl show s1
+mininet> sh ovs-ofctl show s2
+mininet> sh ovs-ofctl show s3
+```
+
+You'll see output like:
+```
+ 1(s1-eth1): addr:...   ← faces h1
+ 2(s1-eth2): addr:...   ← faces h2
+ 3(s1-eth3): addr:...   ← faces s2
+ 4(s1-eth4): addr:...   ← faces s3
         time.sleep(15)
         logger.info("[DEMO] Demo complete.")
     else:
@@ -269,9 +336,4 @@ def main():
     db.close()
 
     print("\nFinal Status:")
-    import json
-    print(json.dumps(controller.stats, indent=2))
-
-
-if __name__ == '__main__':
-    main()
+"""

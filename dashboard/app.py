@@ -25,7 +25,8 @@ controller = ClosedLoopController(
     db,
     loop_interval=5.0,
     latency_threshold=1500.0,
-    loss_threshold=10.0
+    loss_threshold=25.0,   # trigger on loss alone since loss jumps clearly
+    window_size=2
 )
 controller.start()
 
@@ -166,79 +167,54 @@ def get_phase2_status():
                        'stats': {}, 'graph': {'nodes': [], 'edges': []}})
 
 
-@app.route('/api/phase2/inject/<host>')
-def inject_congestion(host):
-    """Inject demo congestion via sudo nsenter"""
+# Verified inter-switch link map from `ip link show` output
+# Each entry: link_label -> (switch, iface)
+DEMO_LINKS = {
+    's1-s2': ('s1', 's1-eth3'),
+    's2-s3': ('s2', 's2-eth4'),
+    's1-s3': ('s1', 's1-eth4'),
+}
+
+@app.route('/api/phase2/inject/<link_id>')
+def inject_congestion(link_id):
+    """
+    Inject congestion on an inter-switch link.
+    link_id must be one of: s1-s2, s2-s3, s1-s3
+    """
     try:
-        pid = _find_mininet_pid(host)
-        if not pid:
+        if link_id not in DEMO_LINKS:
             return jsonify({'success': False,
-                           'error': f'Mininet not running or {host} not found'})
-        iface = f"{host}-eth0"
-        # Use sudo explicitly so nsenter has permission even under Flask
-        subprocess.run(
-            f"sudo nsenter -t {pid} -n -- tc qdisc del dev {iface} root 2>/dev/null; true",
-            shell=True
-        )
-        result = subprocess.run(
-            f"sudo nsenter -t {pid} -n -- tc qdisc add dev {iface} root netem delay 500ms loss 20%",
-            shell=True, capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            # Try without sudo (if already root)
-            result2 = subprocess.run(
-                f"nsenter -t {pid} -n -- tc qdisc add dev {iface} root netem delay 500ms loss 20%",
-                shell=True, capture_output=True, text=True
-            )
-            if result2.returncode != 0:
-                return jsonify({'success': False,
-                               'error': f'nsenter failed: {result.stderr.strip()}. '
-                                        f'Run dashboard with: sudo python3 dashboard/app.py'})
-        db.insert_event('congestion', 'warning', host,
-                       f'Demo: +500ms delay, 20% loss on {host}')
-        return jsonify({'success': True, 'host': host,
-                       'message': f'Congestion injected on {host}. Detection in ~10s.'})
+                            'error': f'Unknown link "{link_id}". Valid: {list(DEMO_LINKS.keys())}'})
+
+        switch, iface = DEMO_LINKS[link_id]
+        success = controller.inject_demo_congestion(switch=switch, iface=iface,
+                                                     delay_ms=500, loss_pct=30.0)
+        if not success:
+            return jsonify({'success': False,
+                            'error': f'tc netem failed on {switch}/{iface}. '
+                                     f'Run dashboard with: sudo python3 dashboard/app.py'})
+
+        return jsonify({'success': True, 'link': link_id, 'switch': switch, 'iface': iface,
+                        'message': f'Congestion injected on {link_id} ({switch}/{iface}). Detection in ~10s.'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/api/phase2/clear/<host>')
-def clear_congestion(host):
-    """Clear injected congestion from host namespace"""
+@app.route('/api/phase2/clear/<link_id>')
+def clear_congestion(link_id):
+    """
+    Clear injected congestion from an inter-switch link.
+    link_id must be one of: s1-s2, s2-s3, s1-s3
+    """
     try:
-        iface = f"{host}-eth0"
-        pids = _find_all_mininet_pids(host)
-        if not pids:
+        if link_id not in DEMO_LINKS:
             return jsonify({'success': False,
-                           'error': f'Mininet not running or {host} not found'})
+                            'error': f'Unknown link "{link_id}". Valid: {list(DEMO_LINKS.keys())}'})
 
-        cleared = False
-        errors = []
-        for pid in pids:
-            for prefix in ['sudo ', '']:
-                # Delete ALL qdiscs on the interface
-                subprocess.run(
-                    f"{prefix}nsenter -t {pid} -n -- "
-                    f"tc qdisc del dev {iface} root 2>/dev/null || true",
-                    shell=True
-                )
-                # Verify
-                chk = subprocess.run(
-                    f"{prefix}nsenter -t {pid} -n -- tc qdisc show dev {iface}",
-                    shell=True, capture_output=True, text=True
-                )
-                if chk.returncode == 0 and 'netem' not in chk.stdout:
-                    cleared = True
-                    break
-            if cleared:
-                break
-
-        db.insert_event('recovery', 'info', host,
-                       f'Congestion cleared on {host}')
-        return jsonify({
-            'success': True, 'host': host, 'cleared': cleared,
-            'message': f'Congestion cleared on {host}. Recovery visible in ~15s.'
-        })
+        switch, iface = DEMO_LINKS[link_id]
+        success = controller.clear_demo_congestion(switch=switch, iface=iface)
+        return jsonify({'success': True, 'link': link_id, 'switch': switch, 'iface': iface,
+                        'message': f'Congestion cleared on {link_id} ({switch}/{iface}). Recovery in ~15s.'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -261,27 +237,15 @@ def get_phase2_events():
 def reset_network():
     """Reset all injected congestion on all hosts"""
     try:
-        hosts = ['h1','h2','h3','h4','h5','h6']
         results = {}
-        for host in hosts:
-            iface = f"{host}-eth0"
-            pids = _find_all_mininet_pids(host)
-            if not pids:
-                results[host] = 'not_found'
-                continue
-            for pid in pids:
-                for prefix in ['sudo ', '']:
-                    subprocess.run(
-                        f"{prefix}nsenter -t {pid} -n -- "
-                        f"tc qdisc del dev {iface} root 2>/dev/null || true",
-                        shell=True
-                    )
-            results[host] = 'cleared'
+        for link_id, (switch, iface) in DEMO_LINKS.items():
+            success = controller.clear_demo_congestion(switch=switch, iface=iface)
+            results[link_id] = 'cleared' if success else 'failed'
 
         # Clear controller state
         controller.active_congestion = {}
         controller.optimizer.active_reroutes = {}
-        controller.stats['recoveries'] += len(hosts)
+        controller.stats['recoveries'] += len(DEMO_LINKS)
 
         # Remove all OpenFlow reroute rules, restore flood
         for sw in ['s1','s2','s3']:

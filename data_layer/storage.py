@@ -290,6 +290,7 @@ class NetworkDatabase:
         self.db_path = db_path
         self.conn = None
         self.connect()
+        self.initialize_schema() 
         
     def connect(self):
         """Establish database connection"""

@@ -1,4 +1,4 @@
-#!/home/aneesh/Desktop/cn_paper/cn-project/venv/bin/python3
+#!/home/gargi/cn-project/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
