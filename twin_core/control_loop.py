@@ -43,7 +43,8 @@ class ClosedLoopController:
     def __init__(self, db: NetworkDatabase,
                  loop_interval: float = 5.0,
                  latency_threshold: float = 50.0,
-                 loss_threshold: float = 5.0):
+                 loss_threshold: float = 5.0,
+                 window_size: int = 3):
 
         self.db = db
         self.loop_interval = loop_interval
@@ -51,7 +52,7 @@ class ClosedLoopController:
         self.loop_count = 0
 
         # Phase 2 components
-        self.detector   = CongestionDetector(db, latency_threshold, loss_threshold)
+        self.detector   = CongestionDetector(db, latency_threshold, loss_threshold, window_size)
         self.optimizer  = RouteOptimizer(db)
         self.controller = OpenFlowController(db)
 

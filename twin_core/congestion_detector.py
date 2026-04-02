@@ -27,7 +27,7 @@ class CongestionDetector:
     def __init__(self, db: NetworkDatabase,
                  latency_threshold_ms: float = 50.0,
                  loss_threshold_pct: float = 5.0,
-                 window_size: int = 10):
+                 window_size: int = 3):
         """
         Args:
             db: Database instance
