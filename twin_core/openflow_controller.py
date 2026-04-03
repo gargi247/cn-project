@@ -103,6 +103,7 @@ class OpenFlowController:
         self.switch_ports = discover_topology()
         logger.info(f"Discovered switches: {list(self.switch_ports.keys())}")
 
+    '''
     def install_flood_baseline(self):
         """Re-install flood rules as baseline (safe default)."""
         switches = ['s1', 's2', 's3']
@@ -113,6 +114,19 @@ class OpenFlowController:
                 shell=True, capture_output=True
             )
         logger.info("Baseline flood rules installed on all switches")
+    '''
+
+    def install_flood_baseline(self):
+        """Re-install baseline rules (safe default)."""
+        switches = ['s1', 's2', 's3']
+        for sw in switches:
+            subprocess.run(
+                f"ovs-ofctl add-flow {sw} 'priority=1,actions=normal'",
+                shell=True, capture_output=True
+            )
+        logger.info("Baseline NORMAL rules installed on all switches")
+
+
 
     def get_output_port(self, switch: str, interface_name: str) -> Optional[int]:
         """Look up port number for an interface on a switch."""
@@ -165,9 +179,16 @@ class OpenFlowController:
             # We use ovs-ofctl dump-ports to find the right port
             out_port = self._find_port_to_neighbor(node, next_hop)
 
+            '''
             if out_port is None:
                 logger.warning(f"Cannot find port from {node} to {next_hop}, using flood")
                 out_port = 'flood'
+            '''
+
+
+            if out_port is None:
+                logger.error(f"Cannot find port from {node} to {next_hop}, skipping rule")
+                continue
 
             # Install high-priority rule: match dst IP, output to specific port
             flow_rule = (
@@ -202,7 +223,7 @@ class OpenFlowController:
 
             out_port = self._find_port_to_neighbor(node, prev_hop)
             if out_port is None:
-                out_port = 'flood'
+                continue
 
             flow_rule = (
                 f"priority=100,"

@@ -2,7 +2,7 @@
 Dynamic Mininet Topology Builder from YAML Configuration
 Reads YAML config and constructs Mininet network topology
 """
-
+'''
 import yaml
 import argparse
 import logging
@@ -84,7 +84,7 @@ class YAMLTopologyBuilder:
         try:
             logger.info("Initializing Mininet network...")
             self.net = Mininet(
-                controller=OVSController,
+                controller=None,
                 switch=OVSSwitch,
                 link=TCLink,
                 autoSetMacs=True
@@ -117,7 +117,7 @@ class YAMLTopologyBuilder:
             node = self.net.addHost(name, ip=ip, mac=mac)
             logger.info(f"Added host: {name} (IP: {ip}, MAC: {mac})")
         elif node_type == 'switch':
-            node = self.net.addSwitch(name)
+            node = self.net.addSwitch(name, stp=True)
             logger.info(f"Added switch: {name}")
         else:
             logger.warning(f"Unknown node type: {node_type}")
@@ -149,8 +149,10 @@ class YAMLTopologyBuilder:
         try:
             logger.info("Starting network...")
             self.net.start()
+            for sw in self.net.switches: 
+                sw.cmd('ovs-vsctl set-fail-mode {} standalone'.format(sw.name))
             logger.info("Network started successfully")
-            self.setup_flood_flows()
+            #self.setup_flood_flows()
             self.setup_static_arp()
             logger.info("Ready — type 'pingall' in CLI to verify connectivity")
             return True
@@ -288,4 +290,201 @@ if __name__ == '__main__':
         exit(main())
     except KeyboardInterrupt:
         logger.info("\nInterrupted by user")
+        exit(0)
+
+'''
+
+"""
+Dynamic Mininet Topology Builder from YAML Configuration
+Reads YAML config and constructs Mininet network topology
+"""
+
+import yaml
+import argparse
+import logging
+from typing import Dict
+from mininet.net import Mininet
+from mininet.node import OVSSwitch
+from mininet.link import TCLink
+from mininet.cli import CLI
+from mininet.log import setLogLevel
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from data_layer.storage import NetworkDatabase
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class YAMLTopologyBuilder:
+    
+    def __init__(self, config_path: str, db: NetworkDatabase = None):
+        self.config_path = config_path
+        self.config = None
+        self.net = None
+        self.db = db
+        self.nodes = {}
+        self.links = []
+        
+    def load_config(self):
+        try:
+            with open(self.config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
+            logger.info(f"Loaded configuration: {self.config['network']['name']}")
+            return True
+        except Exception as e:
+            logger.error(f"Config load error: {e}")
+            return False
+    
+    def register_topology_in_db(self):
+        if not self.db:
+            return
+
+        for node_config in self.config['network']['nodes']:
+            self.db.insert_topology_node(
+                node_config['name'],
+                node_config['type'],
+                node_config.get('ip'),
+                node_config.get('mac')
+            )
+
+        for link_config in self.config['network']['links']:
+            src = link_config['src']
+            dst = link_config['dst']
+            bw = link_config.get('bandwidth', 100)
+            delay = float(link_config.get('delay', '0ms').replace('ms', ''))
+
+            self.db.insert_link(src, dst, bw, delay)
+            self.db.insert_link(dst, src, bw, delay)
+
+        self.db.close()
+        self.db = None
+        logger.info("Topology stored in DB and connection closed")
+
+    def build_topology(self):
+        if not self.config:
+            return False
+        
+        try:
+            logger.info("Initializing Mininet...")
+
+            # ✅ FIXED: no controller, enable static ARP
+            self.net = Mininet(
+                controller=None,
+                switch=OVSSwitch,
+                link=TCLink,
+                autoSetMacs=True,
+                autoStaticArp=True
+            )
+
+            # ❌ REMOVED: self.net.addController('c0')
+
+            logger.info("Adding nodes...")
+            for node_config in self.config['network']['nodes']:
+                self._add_node(node_config)
+
+            logger.info("Adding links...")
+            for link_config in self.config['network']['links']:
+                self._add_link(link_config)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Topology build error: {e}")
+            return False
+
+    def _add_node(self, node_config: Dict):
+        name = node_config['name']
+        node_type = node_config['type']
+
+        if node_type == 'host':
+            node = self.net.addHost(
+                name,
+                ip=node_config.get('ip'),
+                mac=node_config.get('mac')
+            )
+        elif node_type == 'switch':
+            node = self.net.addSwitch(name, stp=True)
+        else:
+            return
+
+        self.nodes[name] = node
+
+    def _add_link(self, link_config: Dict):
+        src = link_config['src']
+        dst = link_config['dst']
+
+        if src not in self.nodes or dst not in self.nodes:
+            return
+
+        self.net.addLink(
+            self.nodes[src],
+            self.nodes[dst],
+            bw=link_config.get('bandwidth', 100),
+            delay=link_config.get('delay', '0ms'),
+            loss=link_config.get('loss', 0)
+        )
+
+    def start_network(self):
+        if not self.net:
+            return False
+
+        try:
+            logger.info("Starting network...")
+            self.net.start()
+
+            # ✅ CRITICAL FIX: enable learning switch mode
+            for sw in self.net.switches:
+                sw.cmd(f'ovs-vsctl set-fail-mode {sw.name} standalone')
+
+            logger.info("Network ready")
+            return True
+
+        except Exception as e:
+            logger.error(f"Start error: {e}")
+            return False
+
+    def run_cli(self):
+        CLI(self.net)
+
+    def stop_network(self):
+        if self.net:
+            self.net.stop()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', default='config/topology_config.yaml')
+    parser.add_argument('--db', default='dtn_network.db')
+    args = parser.parse_args()
+
+    setLogLevel('info')
+
+    db = NetworkDatabase(args.db)
+    builder = YAMLTopologyBuilder(args.config, db)
+
+    if not builder.load_config():
+        return 1
+
+    builder.register_topology_in_db()
+
+    if not builder.build_topology():
+        return 1
+
+    if not builder.start_network():
+        return 1
+
+    builder.run_cli()
+    builder.stop_network()
+
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        exit(main())
+    except KeyboardInterrupt:
         exit(0)

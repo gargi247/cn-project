@@ -93,18 +93,19 @@ network:
       bandwidth: 1000  # Gbps backbone
       delay: "10ms"
       loss: 0
-      
+
+    
     - src: "s2"
       dst: "s3"
       bandwidth: 1000
       delay: "10ms"
       loss: 0
       
-    - src: "s1"
-      dst: "s3"
-      bandwidth: 1000
-      delay: "15ms"
-      loss: 0
+    #- src: "s1"
+      #dst: "s3"
+      #bandwidth: 1000
+      #delay: "15ms"
+      #loss: 0
 
 # Traffic generation patterns (for testing)
 traffic:
