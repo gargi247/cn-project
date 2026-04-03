@@ -1,0 +1,19 @@
+# Maps each base station to its corresponding Mininet switch + hosts
+bs_to_mininet:
+  BS_MAC_1:
+    switch: s1
+    hosts: [h1, h2]
+    inject_interface: s1-eth1   # interface to apply tc on
+  BS_MAC_2:
+    switch: s2
+    hosts: [h3, h4]
+    inject_interface: s2-eth1
+  BS_MAC_3:
+    switch: s3
+    hosts: [h5, h6]
+    inject_interface: s3-eth1
+
+# Thresholds
+transport_congestion_threshold_ms: 50    # use 50ms now with action=NORMAL
+ran_sinr_threshold_db: 5.0              # below this = bad signal
+ran_load_threshold_pct: 80.0            # above this = overloaded BS

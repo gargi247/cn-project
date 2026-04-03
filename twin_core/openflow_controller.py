@@ -29,9 +29,13 @@ HOST_TO_SWITCH = {
 
 # Switch port mappings (auto-discovered or hardcoded from ovs-vsctl show)
 # Format: {switch: {neighbor: port_number}}
-SWITCH_PORTS: Dict[str, Dict[str, int]] = {}
+SWITCH_PORTS: Dict[str, Dict[str, int]] = {
+    's1': {'h1': 1, 'h2': 2, 's2': 3},
+    's2': {'h3': 1, 'h4': 2, 's1': 3, 's3': 4},
+    's3': {'h5': 1, 'h6': 2, 's2': 3}
+}
 
-
+"""
 def discover_topology() -> Dict[str, Dict[str, int]]:
     # Hardcoded port map derived from `ip link show` output on the running topology.
     # Format: {switch: {neighbor: port_number}}
@@ -39,11 +43,10 @@ def discover_topology() -> Dict[str, Dict[str, int]]:
     # s1-eth4@s3-eth4 → s1 port 4 faces s3
     # s2-eth4@s3-eth3 → s2 port 4 faces s3  (and s3 port 3 faces s2)
     SWITCH_PORTS: Dict[str, Dict[str, int]] = {
-        's1': {'h1': 1, 'h2': 2, 's2': 3, 's3': 4},
+        's1': {'h1': 1, 'h2': 2, 's2': 3},
         's2': {'h3': 1, 'h4': 2, 's1': 3, 's3': 4},
-        's3': {'h5': 1, 'h6': 2, 's2': 3, 's1': 4},
+        's3': {'h5': 1, 'h6': 2, 's2': 3}
     }
-
 # Inter-switch interfaces to use for tc netem congestion injection
 # Format: {(switch, neighbor): interface_name}
     INTER_SWITCH_IFACES = {
@@ -54,7 +57,7 @@ def discover_topology() -> Dict[str, Dict[str, int]]:
         ('s2', 's3'): 's2-eth4',
         ('s3', 's2'): 's3-eth3',
     }
-
+"""
 
 def discover_topology() -> Dict[str, Dict[str, int]]:
     """Return the hardcoded port map (already verified from ip link show)."""

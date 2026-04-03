@@ -76,6 +76,31 @@ def get_overview_chart():
     fig.update_layout(title='Latency Distribution', barmode='group',
         template='plotly_white', height=350)
     return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    
+@app.route('/api/chart/packet_loss')
+def chart_packet_loss():
+    try:
+        db = NetworkDatabase(DB_PATH)
+        rows = db.get_recent_metrics(limit=200)
+        
+        # Group by link, take avg loss per link
+        link_loss = {}
+        for r in rows:
+            key = f"{r['node_src']}→{r['node_dst']}"
+            if key not in link_loss:
+                link_loss[key] = []
+            link_loss[key].append(r['packet_loss_pct'])
+        
+        labels = list(link_loss.keys())[:10]   # top 10 links
+        values = [sum(v)/len(v) for v in [link_loss[k] for k in labels]]
+        
+        return jsonify({
+            "labels": labels,
+            "values": values,
+            "chart_type": "bar"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e), "labels": [], "values": []}), 200
 
 
 

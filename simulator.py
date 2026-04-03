@@ -79,6 +79,7 @@ class NetworkSimulator:
         ]
         self.failed_bs: set = set()          # BS IDs currently "down"
         self.interference_ues: set = set()   # UE IDs under extra interference
+        self.ue_bs_assignment: dict = {}   # ue_id → current bs_id (sticky)
 
     # ── Fault injection (called externally for what-if demos) ──
 
@@ -173,18 +174,40 @@ class NetworkSimulator:
         active = [bs for bs in BASE_STATIONS if bs["id"] not in self.failed_bs]
         if not active:
             return None
-        return min(active, key=lambda bs: math.sqrt(
-            (ue["x"] - bs["x"]) ** 2 + (ue["y"] - bs["y"]) ** 2
+        nearest = min(active, key=lambda bs: math.sqrt(
+            (ue["x"] - bs["x"])**2 + (ue["y"] - bs["y"])**2
         ))
+        current_id = self.ue_bs_assignment.get(ue["id"])
+        if current_id and current_id != nearest["id"]:
+            current_bs = next((b for b in active if b["id"] == current_id), None)
+            if current_bs:
+                d_current = math.sqrt((ue["x"]-current_bs["x"])**2 + (ue["y"]-current_bs["y"])**2)
+                d_nearest = math.sqrt((ue["x"]-nearest["x"])**2 + (ue["y"]-nearest["y"])**2)
+                if d_current / d_nearest < 1.15:   # must be 15% better to trigger handoff
+                    return current_bs
+        self.ue_bs_assignment[ue["id"]] = nearest["id"]
+        return nearest
     
 
     def get_random_bs(self, exclude=None):
-        bs_list = list(self.base_stations.keys())
-        if exclude in bs_list:
-            bs_list.remove(exclude)
-        return random.choice(bs_list) if bs_list else None
+        active = [bs["id"] for bs in BASE_STATIONS if bs["id"] not in self.failed_bs]
+        if exclude in active:
+            active.remove(exclude)
+        return self.rng.choice(active) if active else None
 
-
-    def force_handoff(self, ue_id, new_bs):
-        if ue_id in self.ues:
-            self.ues[ue_id].connected_bs = new_bs
+    def force_handoff(self, ue_id: str, new_bs_id: str):
+        """
+        Teleport a UE to be closest to new_bs_id by overriding its position.
+        Since _best_bs() always picks nearest BS, we move the UE near the target BS.
+        """
+        target = next((bs for bs in BASE_STATIONS if bs["id"] == new_bs_id), None)
+        if target is None:
+            return
+        for ue in self.ues:
+            if ue["id"] == ue_id:
+            # Place UE 50m from the target BS so it stays connected to it
+                ue["x"] = target["x"] + self.rng.uniform(-50, 50)
+                ue["y"] = target["y"] + self.rng.uniform(-50, 50)
+                ue["vx"] = self.rng.uniform(-2, 2)   # slow it down too
+                ue["vy"] = self.rng.uniform(-2, 2)
+                break

@@ -233,12 +233,12 @@ class CongestionDetector:
         )
         return True
     """
-
+    """
     def _find_node_pid(self, node_name: str) -> str:
-        """
+        
         Find the PID that owns the network namespace for a Mininet node.
         Uses namespace inode deduplication to get the true owner, not child PIDs.
-        """
+        
         candidates = []
         try:
             for pid_dir in os.listdir('/proc'):
@@ -268,3 +268,42 @@ class CongestionDetector:
                 continue
 
         return list(seen_inodes.values())[0] if seen_inodes else candidates[0]
+    """
+    def _find_node_pid(self, host_name: str) -> Optional[int]:
+        """Find the PID that OWNS the network namespace for this host."""
+        import os, glob
+        try:
+        # Get all candidate PIDs from cmdline search
+            candidates = []
+            for pid_dir in glob.glob('/proc/[0-9]*/cmdline'):
+                try:
+                    pid = int(pid_dir.split('/')[2])
+                    with open(pid_dir, 'rb') as f:
+                        cmdline = f.read().decode('utf-8', errors='replace')
+                    if f'mininet:{host_name}' in cmdline:
+                        candidates.append(pid)
+                except (ValueError, IOError):
+                    continue
+
+            if not candidates:
+                return None
+
+        # Among candidates, find the one that uniquely owns a net namespace
+        # by comparing /proc/<pid>/ns/net inode values
+            seen_inodes = {}
+            for pid in candidates:
+                try:
+                    ns_link = os.readlink(f'/proc/{pid}/ns/net')
+                    inode = ns_link  # e.g. "net:[4026532123]"
+                    if inode not in seen_inodes:
+                        seen_inodes[inode] = pid
+                except OSError:
+                    continue
+
+        # Return the first (lowest PID = namespace owner, not child)
+            if seen_inodes:
+                return min(seen_inodes.values())
+            return candidates[0]
+        except Exception as e:
+            logger.error(f"PID lookup error for {host_name}: {e}")
+            return None
