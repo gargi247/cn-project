@@ -1,0 +1,14 @@
+# Core — required
+flask==3.0.3
+flask-socketio==5.3.6
+eventlet==0.36.1
+
+# Testing
+pytest==8.2.0
+
+# Optional — only needed for real Mininet runs
+# mininet          ← installed via: sudo apt install mininet
+# scapy==2.5.0     ← for packet crafting in advanced mode
+
+# For the dashboard plots (optional)
+# matplotlib==3.8.4   ← used by dashboard if installed
