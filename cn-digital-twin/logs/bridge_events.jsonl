@@ -1,0 +1,5 @@
+{"ts": "02:45:34", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:45:34", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.4dB on BS3"}}
+{"ts": "02:45:40", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:45:44", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 2.3dB on BS2"}}
+{"ts": "02:46:04", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 1.7dB on BS2"}}

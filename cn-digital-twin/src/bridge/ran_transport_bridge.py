@@ -40,6 +40,11 @@ CN concepts demonstrated:
   - Stop-and-wait ARQ (reliability over UDP)
   - Cross-layer design (OSI layers sharing information)
   - Control plane vs data plane separation
+
+Port layout:
+  BRIDGE_PORT     (9999)  — RAN sends here; bridge receives from RAN
+  BRIDGE_PORT+1  (10000)  — controller listens here; bridge forwards to it
+  BRIDGE_PORT+2  (10001)  — bridge control/query port (dashboard)
 """
 
 import socket
@@ -77,27 +82,46 @@ OPCODE_NAMES = {
 }
 
 # ── Wire format ────────────────────────────────────────────────────────────
-#   opcode:1B  seq:2B  payload_len:2B  payload:NB
+#   Full bridge frame: opcode:1B  seq:2B  payload_len:2B  payload:NB
 HEADER_FMT = "!BHH"
 HEADER_SZ  = struct.calcsize(HEADER_FMT)   # 5 bytes
+
+#   RAN-side frame (from ran_simulator._send_msg): opcode:1B  payload_len:2B
+RAN_HDR_FMT = "!BH"
+RAN_HDR_SZ  = struct.calcsize(RAN_HDR_FMT)  # 3 bytes
 
 ACK_FMT    = "!BH"   # 0xFF + seq
 ACK_SZ     = struct.calcsize(ACK_FMT)
 
 
 def encode_msg(opcode, seq, payload_dict):
+    """Encode a full 5-byte bridge frame."""
     payload = json.dumps(payload_dict).encode("utf-8")
     header  = struct.pack(HEADER_FMT, opcode, seq, len(payload))
     return header + payload
 
 
 def decode_msg(data):
+    """Decode a full 5-byte bridge frame."""
     if len(data) < HEADER_SZ:
         raise ValueError("Packet too short")
     opcode, seq, plen = struct.unpack_from(HEADER_FMT, data)
     payload_bytes = data[HEADER_SZ: HEADER_SZ + plen]
     payload = json.loads(payload_bytes.decode("utf-8")) if payload_bytes else {}
     return opcode, seq, payload
+
+
+def decode_ran_msg(data):
+    """
+    Decode a 3-byte RAN frame (from ran_simulator._send_msg).
+    Returns (opcode, payload_dict).
+    """
+    if len(data) < RAN_HDR_SZ:
+        raise ValueError("RAN packet too short")
+    opcode, plen = struct.unpack_from(RAN_HDR_FMT, data)
+    payload_bytes = data[RAN_HDR_SZ: RAN_HDR_SZ + plen]
+    payload = json.loads(payload_bytes.decode("utf-8")) if payload_bytes else {}
+    return opcode, payload
 
 
 def encode_ack(seq):
@@ -171,13 +195,11 @@ class ARQSender:
 class CrossLayerBridge:
     """
     Central bridge process.
-    Listens on BRIDGE_PORT and BRIDGE_PORT+1, relays messages between
-    RAN and Transport layers, maintains shared state dict, logs everything.
 
     Ports:
-      BRIDGE_PORT     → Transport controller listens here (RAN sends to it)
-      BRIDGE_PORT+1   → RAN simulator listens here (Transport sends to it)
-      BRIDGE_PORT+2   → Bridge own control port (for dashboard queries)
+      BRIDGE_PORT     (9999)  — receives from RAN (3-byte header)
+      BRIDGE_PORT+1  (10000)  — forwards to controller (5-byte header)
+      BRIDGE_PORT+2  (10001)  — control/query port for dashboard
     """
 
     def __init__(self):
@@ -191,27 +213,36 @@ class CrossLayerBridge:
         self._msg_log     = os.path.join(LOG_DIR, "bridge_events.jsonl")
         self._running     = False
 
-        # Sockets
+        # Socket that receives from RAN (binds to BRIDGE_PORT)
         self._sock_from_ran   = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Socket that sends to / receives from controller (binds to BRIDGE_PORT+1)
+        self._sock_to_ctrl    = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Socket that receives from controller for RAN forwarding
         self._sock_from_ctrl  = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Control/query port
         self._sock_control    = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        # Known peer addresses (set on first receive, or configured)
-        self._ran_addr  = None
-        self._ctrl_addr = None
+        self._ctrl_addr = (BRIDGE_HOST, BRIDGE_PORT + 1)  # controller listens here
+        self._ran_addr  = None   # set on first RAN packet
 
-        # Sequence counters
-        self._seq_to_ctrl = 0
-        self._seq_to_ran  = 0
+        # Sequence counter for messages forwarded to controller
+        self._seq = 0
+        self._seq_lock = threading.Lock()
+
+    def _next_seq(self):
+        with self._seq_lock:
+            s = self._seq & 0xFFFF
+            self._seq += 1
+            return s
 
     def start(self):
-        # RAN → bridge (bridge relays to ctrl)
+        # Receive from RAN
         self._sock_from_ran.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock_from_ran.bind((BRIDGE_HOST, BRIDGE_PORT))
 
-        # Ctrl → bridge (bridge relays to RAN)
+        # Receive from controller (ctrl → RAN direction)
         self._sock_from_ctrl.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock_from_ctrl.bind((BRIDGE_HOST, BRIDGE_PORT + 1))
+        self._sock_from_ctrl.bind((BRIDGE_HOST, BRIDGE_PORT + 3))  # bridge ctrl-recv
 
         # Control/query port
         self._sock_control.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -222,48 +253,56 @@ class CrossLayerBridge:
         threading.Thread(target=self._recv_from_ctrl, daemon=True).start()
         threading.Thread(target=self._handle_control, daemon=True).start()
 
-        log.info(f"Cross-layer bridge started")
-        log.info(f"  RAN→Bridge:   udp://{BRIDGE_HOST}:{BRIDGE_PORT}")
-        log.info(f"  Ctrl→Bridge:  udp://{BRIDGE_HOST}:{BRIDGE_PORT+1}")
-        log.info(f"  Control port: udp://{BRIDGE_HOST}:{BRIDGE_PORT+2}")
+        log.info("Cross-layer bridge started")
+        log.info(f"  RAN→Bridge:        udp://{BRIDGE_HOST}:{BRIDGE_PORT}")
+        log.info(f"  Bridge→Controller: udp://{BRIDGE_HOST}:{BRIDGE_PORT+1}")
+        log.info(f"  Control port:      udp://{BRIDGE_HOST}:{BRIDGE_PORT+2}")
 
-    # ── RAN → Transport relay ─────────────────────────────────────────────
+    # ── RAN → Controller relay ────────────────────────────────────────────
     def _recv_from_ran(self):
+        """
+        Receives 3-byte-header messages from RAN, records them,
+        re-encodes with 5-byte bridge header, forwards to controller.
+        """
         self._sock_from_ran.settimeout(1.0)
         while self._running:
             try:
                 data, addr = self._sock_from_ran.recvfrom(4096)
                 self._ran_addr = addr
 
-                # ACK
-                opcode, seq, payload = decode_msg(data)
-                self._sock_from_ran.sendto(encode_ack(seq), addr)
+                # Decode RAN's compact format (opcode + plen + payload)
+                opcode, payload = decode_ran_msg(data)
 
                 name = OPCODE_NAMES.get(opcode, f"0x{opcode:02X}")
-                log.info(f"RAN→BRIDGE: {name} seq={seq} payload={payload}")
+                log.info(f"RAN→BRIDGE: {name} payload={payload}")
 
                 self._record_event("RAN→Transport", opcode, payload)
                 self._update_ran_state(opcode, payload)
 
-                # Forward to transport controller
-                if self._ctrl_addr:
-                    fwd = encode_msg(opcode, seq, payload)
-                    self._sock_from_ran.sendto(fwd, self._ctrl_addr)
+                # Re-encode with full 5-byte bridge header and forward to controller
+                seq = self._next_seq()
+                fwd = encode_msg(opcode, seq, payload)
+                self._sock_from_ran.sendto(fwd, self._ctrl_addr)
+                log.info(f"BRIDGE→CTRL: {name} seq={seq} forwarded")
 
             except socket.timeout:
                 continue
             except Exception as e:
                 log.error(f"recv_from_ran: {e}")
 
-    # ── Transport → RAN relay ─────────────────────────────────────────────
+    # ── Controller → RAN relay ────────────────────────────────────────────
     def _recv_from_ctrl(self):
+        """
+        Receives 5-byte-header messages from controller,
+        strips to 3-byte format, forwards to RAN.
+        """
         self._sock_from_ctrl.settimeout(1.0)
         while self._running:
             try:
                 data, addr = self._sock_from_ctrl.recvfrom(4096)
-                self._ctrl_addr = addr
 
                 opcode, seq, payload = decode_msg(data)
+                # ACK back to controller
                 self._sock_from_ctrl.sendto(encode_ack(seq), addr)
 
                 name = OPCODE_NAMES.get(opcode, f"0x{opcode:02X}")
@@ -272,10 +311,11 @@ class CrossLayerBridge:
                 self._record_event("Transport→RAN", opcode, payload)
                 self._update_transport_state(opcode, payload)
 
-                # Forward to RAN
+                # Forward to RAN using RAN's compact format
                 if self._ran_addr:
-                    fwd = encode_msg(opcode, seq, payload)
-                    self._sock_from_ctrl.sendto(fwd, self._ran_addr)
+                    ran_payload = json.dumps(payload).encode("utf-8")
+                    ran_hdr     = struct.pack(RAN_HDR_FMT, opcode, len(ran_payload))
+                    self._sock_from_ctrl.sendto(ran_hdr + ran_payload, self._ran_addr)
 
             except socket.timeout:
                 continue
@@ -302,10 +342,10 @@ class CrossLayerBridge:
     def _update_ran_state(self, opcode, payload):
         with self._state_lock:
             if opcode == MSG_HANDOVER_COMPLETE:
-                self._state["ran"]["current_bs"]       = payload.get("new_bs")
-                self._state["ran"]["connected_switch"]  = payload.get("connected_switch")
+                self._state["ran"]["current_bs"]      = payload.get("new_bs")
+                self._state["ran"]["connected_switch"] = payload.get("connected_switch")
             elif opcode == MSG_BS_FAILURE:
-                self._state["ran"]["failed_bs"]        = payload.get("bs_id")
+                self._state["ran"]["failed_bs"] = payload.get("bs_id")
             elif opcode == MSG_REROUTE_REQUEST:
                 self._state["ran"]["last_reroute_reason"] = payload.get("reason")
 

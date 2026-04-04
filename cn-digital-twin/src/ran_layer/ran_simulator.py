@@ -171,7 +171,7 @@ class RANSimulator:
         self._shadow = {bs: 0.0 for bs in self.bs_config}
         self._shadow_ts = 0.0
 
-        # Cross-layer socket
+        # Cross-layer socket — sends to BRIDGE_PORT (the bridge's RAN-facing port)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         # Metrics log
@@ -327,10 +327,16 @@ class RANSimulator:
 
     # ── Cross-layer signaling ─────────────────────────────────────────────
     def _send_msg(self, opcode, payload_dict):
+        """
+        Send a cross-layer message to the bridge (BRIDGE_PORT).
+        The bridge relays it to the controller.
+        Wire format: opcode(1B) + payload_len(2B) + payload(JSON)
+        """
         payload = json.dumps(payload_dict).encode()
         header  = struct.pack("!BH", opcode, len(payload))
         try:
-            self._sock.sendto(header + payload, (BRIDGE_HOST, BRIDGE_PORT + 1))
+            # Send to BRIDGE_PORT — the bridge's RAN-facing receive socket
+            self._sock.sendto(header + payload, (BRIDGE_HOST, BRIDGE_PORT))
         except Exception as e:
             log.error(f"Bridge send error: {e}")
 
@@ -351,6 +357,15 @@ class RANSimulator:
             "connected_switch": sw,
         })
 
+    def _send_bs_recovery(self, bs_id):
+        """Notify controller that a BS has come back online."""
+        sw = self.bs_config[bs_id]["connected_switch"]
+        # Reuse REROUTE_REQUEST opcode with a descriptive reason so
+        # the controller recomputes paths with the link restored.
+        self._send_msg(MSG_REROUTE_REQUEST, {
+            "reason": f"BS {bs_id} recovered (switch {sw} back online)",
+        })
+
     # ── BS toggle (for dashboard control) ────────────────────────────────
     def toggle_bs(self, bs_id):
         if bs_id not in self.bs_states:
@@ -358,14 +373,17 @@ class RANSimulator:
             return
         was = self.bs_states[bs_id]["active"]
         self.bs_states[bs_id]["active"] = not was
+
         if was:
+            # BS going OFFLINE — always send BS_FAILURE regardless of
+            # whether it is currently serving.  The controller needs to
+            # mark its switch links as down and reroute.
             log.warning(f"BS {bs_id} OFFLINE")
-            if self.current_bs == bs_id:
-                self._send_bs_failure(bs_id)
-            else:
-                self._send_reroute_request(f"BS {bs_id} offline")
+            self._send_bs_failure(bs_id)
         else:
+            # BS coming back ONLINE — notify controller to restore links
             log.info(f"BS {bs_id} ONLINE")
+            self._send_bs_recovery(bs_id)
 
     # ── UE mobility ──────────────────────────────────────────────────────
     def move_ue(self, dt_s):

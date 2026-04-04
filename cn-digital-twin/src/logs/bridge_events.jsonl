@@ -1,0 +1,123 @@
+{"ts": "02:16:40", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:16:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -0.1dB on BS2"}}
+{"ts": "02:16:50", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -11.8dB on BS2"}}
+{"ts": "02:16:51", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:17:00", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -18.6dB on BS3"}}
+{"ts": "02:17:01", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:17:19", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS1", "connected_switch": "s1"}}
+{"ts": "02:17:37", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS1 recovered (switch s1 back online)"}}
+{"ts": "02:17:53", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS2", "connected_switch": "s3"}}
+{"ts": "02:17:54", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:17:55", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.7dB on BS1"}}
+{"ts": "02:18:14", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS2 recovered (switch s3 back online)"}}
+{"ts": "02:18:14", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -3.6dB on BS1"}}
+{"ts": "02:18:15", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:18:29", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS3", "connected_switch": "s2"}}
+{"ts": "02:18:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -4.9dB on BS2"}}
+{"ts": "02:18:41", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:18:50", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.9dB on BS1"}}
+{"ts": "02:18:56", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:19:10", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -18.4dB on BS2"}}
+{"ts": "02:19:11", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:19:25", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -5.4dB on BS1"}}
+{"ts": "02:19:26", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:19:31", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:19:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -4.5dB on BS1"}}
+{"ts": "02:19:41", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:19:46", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:20:10", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 2.1dB on BS1"}}
+{"ts": "02:20:16", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:20:20", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.7dB on BS2"}}
+{"ts": "02:20:26", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:20:30", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -6.7dB on BS1"}}
+{"ts": "02:20:31", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:20:45", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -26.7dB on BS2"}}
+{"ts": "02:20:46", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:20:55", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -10.2dB on BS1"}}
+{"ts": "02:20:56", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:21:05", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 1.0dB on BS2"}}
+{"ts": "02:21:15", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 0.5dB on BS2"}}
+{"ts": "02:21:21", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:21:25", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -0.6dB on BS1"}}
+{"ts": "02:21:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -10.2dB on BS1"}}
+{"ts": "02:21:41", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:21:50", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.8dB on BS2"}}
+{"ts": "02:22:10", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.2dB on BS2"}}
+{"ts": "02:22:30", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.9dB on BS2"}}
+{"ts": "02:22:45", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.6dB on BS2"}}
+{"ts": "02:23:00", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 1.3dB on BS2"}}
+{"ts": "02:23:10", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.8dB on BS2"}}
+{"ts": "02:24:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 2.5dB on BS2"}}
+{"ts": "02:25:00", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 2.4dB on BS2"}}
+{"ts": "02:25:10", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.5dB on BS2"}}
+{"ts": "02:25:20", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.2dB on BS2"}}
+{"ts": "02:25:26", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:25:30", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -7.7dB on BS1"}}
+{"ts": "02:25:31", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:25:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -6.9dB on BS2"}}
+{"ts": "02:25:41", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:25:46", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:25:50", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -7.4dB on BS2"}}
+{"ts": "02:25:51", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:26:05", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -4.9dB on BS1"}}
+{"ts": "02:26:06", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:26:30", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -21.3dB on BS2"}}
+{"ts": "02:26:31", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:26:45", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 1.5dB on BS1"}}
+{"ts": "02:26:51", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:26:55", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -4.7dB on BS2"}}
+{"ts": "02:26:56", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:27:05", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -0.2dB on BS1"}}
+{"ts": "02:27:16", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:27:21", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -25.5dB on BS1"}}
+{"ts": "02:27:22", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:27:27", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:27:31", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -30.1dB on BS1"}}
+{"ts": "02:27:32", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:27:41", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.9dB on BS2"}}
+{"ts": "02:27:51", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -9.2dB on BS2"}}
+{"ts": "02:27:52", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:27:57", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:28:01", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -8.2dB on BS2"}}
+{"ts": "02:28:02", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:28:07", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:28:11", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -12.7dB on BS2"}}
+{"ts": "02:28:12", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:28:17", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:28:21", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -9.8dB on BS2"}}
+{"ts": "02:28:22", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:28:31", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.3dB on BS3"}}
+{"ts": "02:28:37", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:28:41", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -9.6dB on BS2"}}
+{"ts": "02:28:42", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:28:50", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS1", "connected_switch": "s1"}}
+{"ts": "02:29:02", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.2dB on BS3"}}
+{"ts": "02:29:12", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -3.6dB on BS3"}}
+{"ts": "02:29:13", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:29:14", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS2", "connected_switch": "s3"}}
+{"ts": "02:29:15", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:29:31", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS2 recovered (switch s3 back online)"}}
+{"ts": "02:29:32", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS1 recovered (switch s1 back online)"}}
+{"ts": "02:29:39", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS3", "connected_switch": "s2"}}
+{"ts": "02:29:40", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:29:40", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.7dB on BS1"}}
+{"ts": "02:30:02", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -2.1dB on BS1"}}
+{"ts": "02:30:14", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:30:14", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 2.5dB on BS2"}}
+{"ts": "02:30:24", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -4.1dB on BS2"}}
+{"ts": "02:30:25", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:30:30", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:30:34", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR -1.0dB on BS2"}}
+{"ts": "02:30:41", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS3", "connected_switch": "s2"}}
+{"ts": "02:31:01", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS3 recovered (switch s2 back online)"}}
+{"ts": "02:31:09", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.9dB on BS2"}}
+{"ts": "02:31:26", "direction": "RAN\u2192Transport", "opcode": "BS_FAILURE", "payload": {"bs_id": "BS3", "connected_switch": "s2"}}
+{"ts": "02:31:42", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "BS BS3 recovered (switch s2 back online)"}}
+{"ts": "02:31:43", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.6dB on BS2"}}
+{"ts": "02:31:45", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS1", "connected_switch": "s1"}}
+{"ts": "02:31:50", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:31:53", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 0.1dB on BS3"}}
+{"ts": "02:32:00", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS2", "connected_switch": "s3"}}
+{"ts": "02:32:03", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 3.1dB on BS2"}}
+{"ts": "02:32:05", "direction": "RAN\u2192Transport", "opcode": "HANDOVER_COMPLETE", "payload": {"new_bs": "BS3", "connected_switch": "s2"}}
+{"ts": "02:32:14", "direction": "RAN\u2192Transport", "opcode": "REROUTE_REQUEST", "payload": {"reason": "low SINR 4.4dB on BS3"}}

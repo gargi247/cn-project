@@ -93,7 +93,8 @@ class LSDB:
         def __repr__(self):
             return (f"Link({self.src}→{self.dst} "
                     f"{self.bw_mbps}Mbps {self.delay_ms}ms "
-                    f"{'CONG' if self.congested else 'ok'})")
+                    f"{'CONG' if self.congested else 'ok'} "
+                    f"{'UP' if self.up else 'DOWN'})")
 
     def __init__(self):
         self._db   = {}     # (src,dst) → LinkRecord
@@ -124,7 +125,9 @@ class LSDB:
         with self._lock:
             for key in [(src, dst), (dst, src)]:
                 if key in self._db:
-                    self._db[key].up = True
+                    self._db[key].up        = True
+                    self._db[key].congested = False
+                    log.info(f"LSDB: Link {key} restored UP")
 
     def get_graph(self):
         """Return adjacency dict {node: {neighbour: cost}}"""
@@ -147,6 +150,11 @@ class LSDB:
                 }
                 for k, v in self._db.items()
             }
+
+    def links_for_switch(self, switch):
+        """Return all (src, dst) pairs that involve this switch."""
+        with self._lock:
+            return [key for key in self._db if switch in key]
 
 
 # ── Dijkstra ───────────────────────────────────────────────────────────────
@@ -263,13 +271,16 @@ class OVSFlowManager:
 # ── Cross-layer message receiver ───────────────────────────────────────────
 class BridgeListener:
     """
-    Receives UDP messages from the RAN simulator (cross-layer bridge).
-    Dispatches to controller callbacks.
+    Receives UDP messages forwarded by the cross-layer bridge.
+    The bridge forwards RAN messages to BRIDGE_PORT+1 (this listener).
+
+    Wire format matches ran_simulator._send_msg:
+      opcode(1B) + payload_len(2B) + payload(JSON)
     """
 
-    # Packet format: [opcode:1B][payload_len:2B][payload:NB]
-    HEADER_FMT = "!BH"
-    HEADER_SZ  = struct.calcsize(HEADER_FMT)
+    # Must match the format used in ran_simulator._send_msg
+    HEADER_FMT = "!BH"                          # opcode + payload_len
+    HEADER_SZ  = struct.calcsize(HEADER_FMT)    # 3 bytes
 
     def __init__(self, host, port, controller):
         self.host       = host
@@ -301,17 +312,32 @@ class BridgeListener:
     def _dispatch(self, data, addr):
         if len(data) < self.HEADER_SZ:
             return
-        opcode, plen = struct.unpack_from(self.HEADER_FMT, data)
-        payload = data[self.HEADER_SZ: self.HEADER_SZ + plen]
+
+        # Try the full 5-byte bridge header first (opcode+seq+plen),
+        # fall back to the 3-byte RAN header (opcode+plen).
         try:
-            msg = json.loads(payload.decode()) if payload else {}
-        except Exception:
-            msg = {}
+            full_fmt  = "!BHH"   # opcode(1) + seq(2) + plen(2)
+            full_sz   = struct.calcsize(full_fmt)
+            if len(data) >= full_sz:
+                opcode, seq, plen = struct.unpack_from(full_fmt, data)
+                payload_bytes = data[full_sz: full_sz + plen]
+            else:
+                opcode, plen = struct.unpack_from(self.HEADER_FMT, data)
+                payload_bytes = data[self.HEADER_SZ: self.HEADER_SZ + plen]
+            msg = json.loads(payload_bytes.decode()) if payload_bytes else {}
+        except Exception as exc:
+            log.error(f"BridgeListener parse error: {exc}")
+            return
 
         if opcode == MSG_REROUTE_REQUEST:
             reason = msg.get("reason", "unknown")
             log.info(f"RAN→CTRL: Reroute requested — {reason}")
-            self.controller.recompute_paths(reason=reason)
+            # Check if this is a BS recovery message
+            if "recovered" in reason:
+                # Extract switch name from reason string and restore links
+                self.controller.on_bs_recovery(reason)
+            else:
+                self.controller.recompute_paths(reason=reason)
 
         elif opcode == MSG_HANDOVER_COMPLETE:
             new_bs  = msg.get("new_bs")
@@ -322,7 +348,7 @@ class BridgeListener:
         elif opcode == MSG_BS_FAILURE:
             bs_id  = msg.get("bs_id")
             sw     = msg.get("connected_switch")
-            log.warning(f"RAN→CTRL: BS {bs_id} failed — marking switch {sw} links degraded")
+            log.warning(f"RAN→CTRL: BS {bs_id} failed — marking switch {sw} links DOWN")
             self.controller.on_bs_failure(bs_id, sw)
 
     def stop(self):
@@ -346,6 +372,8 @@ class DijkstraController:
         self._paths    = {}      # (src,dst) → path
         self._lock     = threading.Lock()
         self._path_log = os.path.join(LOG_DIR, "paths.jsonl")
+        # Track which switches are currently down (from BS failures)
+        self._down_switches = set()
 
     def start(self):
         self.listener.start()
@@ -353,12 +381,12 @@ class DijkstraController:
         self.recompute_paths(reason="startup")
         log.info("DijkstraController running")
 
-    # ── Called by CongestionMonitor ──────────────────────────────────────
+    # ── Called by command loop (congestion inject/clear) ─────────────────
     def update_link(self, src, dst, util_bps, congested):
         self.lsdb.update_utilisation(src, dst, util_bps, congested)
         if congested:
             log.warning(f"Congestion on {src}↔{dst} — triggering reroute")
-            self.recompute_paths(reason=f"congestion on {src}-{dst}")
+        self.recompute_paths(reason=f"{'congestion' if congested else 'clear'} on {src}-{dst}")
 
     # ── Path recomputation ────────────────────────────────────────────────
     def recompute_paths(self, reason="manual"):
@@ -375,7 +403,7 @@ class DijkstraController:
         if changed:
             log.info(f"Paths recomputed [{reason}]:")
             for (src, dst), path in new_paths.items():
-                log.info(f"  {src}→{dst}: {'→'.join(path)}")
+                log.info(f"  {src}→{dst}: {'→'.join(path) if path else 'UNREACHABLE'}")
             self._install_all_flows(new_paths)
             self._log_paths(new_paths, reason)
         else:
@@ -403,14 +431,43 @@ class DijkstraController:
         self.recompute_paths(reason=f"RAN handover to {new_bs}")
 
     def on_bs_failure(self, bs_id, switch):
-        """Mark all links to/from switch as degraded."""
-        for sw_other in TOPOLOGY["switches"]:
-            if sw_other != switch:
-                # Check if link exists
-                self.lsdb.update_utilisation(switch, sw_other,
-                                             util_bps=0,
-                                             congested=True)
-        self.recompute_paths(reason=f"BS {bs_id} failure")
+        """
+        BS failed: mark ALL links touching that switch as DOWN so
+        Dijkstra returns infinite cost and routes completely around it.
+        """
+        log.warning(f"BS {bs_id} failure — marking all links on {switch} as DOWN")
+        self._down_switches.add(switch)
+
+        # Mark every link involving this switch as down
+        for src, dst, *_ in TOPOLOGY["links"]:
+            if src == switch or dst == switch:
+                self.lsdb.mark_link_down(src, dst)
+
+        self.recompute_paths(reason=f"BS {bs_id} failure — {switch} links DOWN")
+
+    def on_bs_recovery(self, reason):
+        """
+        BS recovered: restore all links for the switch mentioned in reason,
+        then recompute paths.
+        """
+        # Parse switch name out of the reason string
+        # reason format: "BS BSx recovered (switch sY back online)"
+        switch = None
+        for word in reason.split():
+            if word.startswith("s") and len(word) == 2 and word[1].isdigit():
+                switch = word
+                break
+
+        if switch and switch in self._down_switches:
+            log.info(f"BS recovery — restoring links on {switch}")
+            self._down_switches.discard(switch)
+            for src, dst, *_ in TOPOLOGY["links"]:
+                if src == switch or dst == switch:
+                    self.lsdb.mark_link_up(src, dst)
+            self.recompute_paths(reason=f"BS recovery — {switch} links restored")
+        else:
+            # Fallback: just recompute
+            self.recompute_paths(reason=reason)
 
     def get_path(self, src, dst):
         with self._lock:
@@ -468,8 +525,6 @@ class CongestionMonitor:
         congested = rtt > self.rtt_threshold or rtt > baseline * 2
         log.debug(f"Probe {src_name}→{dst_name}: RTT={rtt:.1f}ms "
                   f"(baseline={baseline:.1f}ms) congested={congested}")
-        # Approximate: blame the switch-to-switch link on the path
-        # In real system, use traceroute or per-link counters
         return rtt, congested
 
     def _loop(self):
@@ -479,7 +534,6 @@ class CongestionMonitor:
                 result = self._probe_pair(src, dst)
                 if result:
                     rtt, congested = result
-                    # Notify controller (link identification is simplified)
                     if congested:
                         log.warning(f"RTT spike {src}→{dst}: {rtt:.1f}ms")
             time.sleep(self.interval)

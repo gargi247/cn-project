@@ -193,12 +193,14 @@ def command_loop(ran_sim, controller, bridge, stop_event):
             controller.update_link(a, b, util_bps=9_500_000, congested=True)
             set_result(f"{Y}→ Congestion injected on {link}{RS}")
 
+
         elif cmd == "clear":
-            for src, dst, *_ in __import__("config",
-                                           globals(), locals(), [], 1).TOPOLOGY["links"]:
-                if src.startswith("s") and dst.startswith("s"):
-                    controller.update_link(src, dst, util_bps=0, congested=False)
-            set_result(f"{G}→ All congestion cleared{RS}")
+                    from config import TOPOLOGY
+                    for src, dst, *_ in TOPOLOGY["links"]:
+                        if src.startswith("s") and dst.startswith("s"):
+                            controller.update_link(src, dst, util_bps=0, congested=False)
+                    set_result(f"{G}→ All congestion cleared{RS}")
+
 
         elif cmd.startswith("toggle "):
             bs_id = cmd.split()[1].upper()
